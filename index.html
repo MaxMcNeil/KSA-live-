@@ -51,6 +51,16 @@
 
     <script>
         let i = 0;
+        let totalCards = 10; // Valeur par défaut maximale, s'ajustera si une image échoue
+
+        // Fonction pour tester si une image existe avant de l'afficher proprement
+        function checkImage(index, callback) {
+            const testImg = new Image();
+            testImg.onload = () => callback(true);
+            testImg.onerror = () => callback(false);
+            testImg.src = `card_${index}.png?t=${Date.now()}`;
+        }
+
         function animate() {
             const c1 = document.getElementById('c1');
             const c2 = document.getElementById('c2');
@@ -59,15 +69,27 @@
             c1.classList.toggle('fold');
             c2.classList.toggle('fold');
             
-            // Chargement de la suivante en douce
-            i = (i + 1) % 10;
-            setTimeout(() => {
-                if (c1.classList.contains('fold')) {
-                    document.getElementById('img1').src = `card_${i}.png?t=${Date.now()}`;
-                } else {
-                    document.getElementById('img2').src = `card_${i}.png?t=${Date.now()}`;
+            // Calcul de l'index suivant potentiel
+            let nextIndex = (i + 1) % totalCards;
+
+            // Vérification de l'existence de la carte suivante
+            checkImage(nextIndex, (exists) => {
+                if (!exists && nextIndex > 1) {
+                    // Si la carte n'existe pas, on reboucle au début (0)
+                    totalCards = nextIndex; 
+                    nextIndex = 0;
                 }
-            }, 500);
+                
+                // Chargement de la suivante en douce
+                setTimeout(() => {
+                    if (c1.classList.contains('fold')) {
+                        document.getElementById('img1').src = `card_${nextIndex}.png?t=${Date.now()}`;
+                    } else {
+                        document.getElementById('img2').src = `card_${nextIndex}.png?t=${Date.now()}`;
+                    }
+                    i = nextIndex;
+                }, 500);
+            });
             
             setTimeout(animate, 7000);
         }

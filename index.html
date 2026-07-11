@@ -1,50 +1,56 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html>
 <head>
     <style>
-        body { 
-            margin: 0; 
-            width: 1080px; 
-            height: 1920px; 
-            overflow: hidden; 
-            /* Fond dégradé artistique */
-            background: linear-gradient(125deg, #2c3e50, #4ca1af, #2c3e50); 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
+        body { margin: 0; width: 1080px; height: 1920px; background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        
+        #stage { width: 600px; height: 750px; perspective: 1000px; }
+        
+        .card { 
+            width: 100%; height: 100%; position: absolute;
+            transition: transform 1s ease-in-out, opacity 1s;
+            transform-origin: left center;
+            backface-visibility: hidden;
+            border-radius: 20px; overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        #flipbook { width: 900px; height: 700px; perspective: 2000px; }
-        .page { background: white; width: 900px; height: 700px; border-radius: 20px; padding: 20px; box-sizing: border-box; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
-        img { width: 100%; border-radius: 15px; }
+        
+        /* État "plié" */
+        .card.fold { transform: rotateY(-180deg); opacity: 0; }
+        
+        img { width: 100%; height: 100%; object-fit: cover; }
     </style>
 </head>
 <body>
 
-    <div id="flipbook">
-        <div class="page" id="p1"></div>
-        <div class="page" id="p2"></div>
+    <div id="stage">
+        <div id="c1" class="card"><img id="img1" src="card_0.png"></div>
+        <div id="c2" class="card fold"><img id="img2" src="card_1.png"></div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/3/turn.min.js"></script>
     <script>
-        const images = ['card_0.png', 'card_1.png', 'card_2.png', 'card_3.png', 'card_4.png'];
-        let idx = 0;
-
-        // Initialisation du flipbook
-        $('#flipbook').turn({ width: 900, height: 700, autoCenter: true });
-
-        function update() {
-            const imgPath = images[idx % images.length] + '?t=' + Date.now();
-            const target = (idx % 2 === 0) ? '#p1' : '#p2';
-            document.querySelector(target).innerHTML = `<img src="${imgPath}">`;
+        let i = 0;
+        function animate() {
+            const c1 = document.getElementById('c1');
+            const c2 = document.getElementById('c2');
             
-            // Déclenche le tournage de page
-            $('#flipbook').turn('next');
+            // On bascule la classe fold pour créer l'effet de livre
+            c1.classList.toggle('fold');
+            c2.classList.toggle('fold');
             
-            idx++;
-            setTimeout(update, 7000);
+            // Chargement de la suivante en douce
+            i = (i + 1) % 5;
+            setTimeout(() => {
+                if (c1.classList.contains('fold')) {
+                    document.getElementById('img1').src = `card_${i}.png?t=${Date.now()}`;
+                } else {
+                    document.getElementById('img2').src = `card_${i}.png?t=${Date.now()}`;
+                }
+            }, 1000);
+            
+            setTimeout(animate, 7000);
         }
-        update();
+        animate();
     </script>
 </body>
 </html>

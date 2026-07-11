@@ -21,7 +21,13 @@ jobs:
       # Installation des dépendances et du navigateur Playwright
       - run: npm install
       - run: npx playwright install chromium --with-deps
-      
+            # ... (juste avant - run: node capture.js)
+      - name: Vérifier la présence des fichiers
+        run: ls -la  # Cela affichera la liste des fichiers dans les logs
+
+      - name: Exécution du script de capture
+        run: node capture.js
+        
       # Exécution du script de capture
       - run: node capture.js
       

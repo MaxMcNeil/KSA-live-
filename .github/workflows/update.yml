@@ -1,10 +1,10 @@
-name: Scraper Akhbaar24
+name: Capture News
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 jobs:
-  build:
+  capture:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -12,13 +12,12 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with: { node-version: '18' }
-      - run: npm install axios cheerio
-      - name: Lancer le scraper
-        run: node scraper.js
+      - run: npm install
+      - run: npx playwright install chromium
+      - run: node capture.js
       - name: Commit et Push
         run: |
-          git config user.name "GitHub Action"
-          git config user.email "action@github.com"
-          git add news.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update news.json" && git push)
+          git config user.name "bot"
+          git add *.png
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update cards" && git push)
           

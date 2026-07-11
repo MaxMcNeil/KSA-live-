@@ -1,35 +1,33 @@
-const { execSync } = require('child_process');
+const { chromium } = require('playwright');
 const fs = require('fs');
-const cheerio = require('cheerio');
+const path = require('path');
 
 async function capture() {
-    const sources = [
-        { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: 'img' },
-        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: 'img' }
+    const browser = await chromium.launch();
+    const page = await browser.newPage();
+    const tmpDir = './tmp_cards';
+    
+    // Sélecteurs qui ciblent le conteneur parent (image + texte)
+    const targets = [
+        { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: '.media-card' },
+        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.news-card' }
     ];
 
-    let images = [];
-    
-    for (const source of sources) {
-        try {
-            const html = execSync(`curl -sL "${source.url}"`).toString();
-            const $ = cheerio.load(html);
-            
-            $(source.selector).each((i, el) => {
-                const src = $(el).attr('src');
-                // On filtre pour ne garder que les vraies URLs d'images
-                if (src && src.startsWith('http')) images.push(src);
-            });
-        } catch (e) { console.log("Erreur lecture source :", e.message); }
-    }
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
 
-    const limit = Math.min(images.length, 20);
-    console.log(`Nombre d'images trouvées : ${limit}`);
-    
-    for (let i = 0; i < limit; i++) {
-        try {
-            execSync(`curl -sL "${images[i]}" -o card_${i}.png`);
-        } catch (e) { console.log(`Échec téléchargement image ${i}`); }
+    for (const target of targets) {
+        console.log("Navigation :", target.url);
+        await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+        
+        // On attend que les cartes soient chargées
+        await page.waitForSelector(target.selector, { timeout: 10000 }).catch(() => {});
+        
+        const elements = await page.locator(target.selector).all();
+        // On ne prend que les 5 premières pour aller vite
+        for (let i = 0; i < Math.min(elements.length, 5); i++) {
+            await elements[i].screenshot({ path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`) });
+        }
     }
+    await browser.close();
 }
 capture();

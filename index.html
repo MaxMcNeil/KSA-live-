@@ -1,41 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
     <style>
-        body { margin: 0; background: transparent; width: 1080px; height: 1920px; overflow: hidden; }
-        .buffer { position: absolute; width: 100%; transition: opacity 1s; opacity: 0; }
-        .show { opacity: 1; }
+        body { 
+            margin: 0; 
+            width: 1080px; 
+            height: 1920px; 
+            overflow: hidden; 
+            /* Fond dégradé artistique */
+            background: linear-gradient(125deg, #2c3e50, #4ca1af, #2c3e50); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        #flipbook { width: 900px; height: 700px; perspective: 2000px; }
+        .page { background: white; width: 900px; height: 700px; border-radius: 20px; padding: 20px; box-sizing: border-box; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+        img { width: 100%; border-radius: 15px; }
     </style>
 </head>
 <body>
-    <div id="layer1" class="buffer"></div>
-    <div id="layer2" class="buffer"></div>
 
+    <div id="flipbook">
+        <div class="page" id="p1"></div>
+        <div class="page" id="p2"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/turn.js/3/turn.min.js"></script>
     <script>
-        let toggle = true;
-        let i = 0;
-        
-        function preload(index) {
-            const img = new Image();
-            img.src = `card_${index}.png?t=${Date.now()}`;
-        }
+        const images = ['card_0.png', 'card_1.png', 'card_2.png', 'card_3.png', 'card_4.png'];
+        let idx = 0;
 
-        function play() {
-            const active = toggle ? 'layer1' : 'layer2';
-            const hidden = toggle ? 'layer2' : 'layer1';
-            const container = document.getElementById(active);
+        // Initialisation du flipbook
+        $('#flipbook').turn({ width: 900, height: 700, autoCenter: true });
+
+        function update() {
+            const imgPath = images[idx % images.length] + '?t=' + Date.now();
+            const target = (idx % 2 === 0) ? '#p1' : '#p2';
+            document.querySelector(target).innerHTML = `<img src="${imgPath}">`;
             
-            container.innerHTML = `<img src="card_${i}.png?t=${Date.now()}" style="width:100%">`;
-            container.classList.add('show');
-            document.getElementById(hidden).classList.remove('show');
+            // Déclenche le tournage de page
+            $('#flipbook').turn('next');
             
-            toggle = !toggle;
-            i = (i + 1) % 5;
-            preload(i); // Précharge la suivante
-            
-            setTimeout(play, 7000);
+            idx++;
+            setTimeout(update, 7000);
         }
-        play();
+        update();
     </script>
 </body>
 </html>

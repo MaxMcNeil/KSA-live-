@@ -1,7 +1,7 @@
 name: Capture News
 on:
   schedule:
-    - cron: '*/6 * * *'
+    - cron: '0 */8 * * *' # À 0 minute, toutes les 8 heures
   workflow_dispatch:
 jobs:
   capture:

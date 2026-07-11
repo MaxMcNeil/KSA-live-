@@ -1,93 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
+    <meta charset="UTF-8">
     <style>
-        body { margin: 0; width: 1080px; height: 1920px; background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); overflow: hidden; display: flex; align-items: center; justify-content: center; }
-        
-        /* Augmentation de la taille pour remplir l'écran */
-        #stage { 
-            width: 95%;      /* Utilise 95% de la largeur de l'écran */
-            max-width: 1000px; /* Limite maximale pour ne pas déborder */
-            height: 1080px;    /* Réduit de 10% comme demandé */
-            perspective: 2000px; /* Perspective augmentée pour un effet livre plus marqué */
-            margin: auto;
-            position: relative;
-        }
-
-        .card { 
-            width: 100%; 
-            height: 100%; 
-            position: absolute;
-            transition: transform 1s ease-in-out, opacity 0.5s;
-            transform-origin: left center;
-            backface-visibility: hidden;
-            border-radius: 30px; 
-            overflow: hidden;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-            background: white; 
-        }
-        
-        /* L'effet de pliage 3D */
-        .card.fold { 
-            transform: rotateY(-180deg); 
-            opacity: 0.5; 
-        }
-
-        img { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: contain; 
-            padding: 20px;       
-            box-sizing: border-box;
-        }
+        body { margin: 0; background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        .card { width: 800px; height: 600px; position: absolute; transition: opacity 1s, transform 1s; backface-visibility: hidden; }
+        .fold { opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
-
-    <div id="stage">
-        <div id="c1" class="card"><img id="img1" src="card_0.png"></div>
-        <div id="c2" class="card fold"><img id="img2" src="card_1.png"></div>
-    </div>
-
-        <script>
-        let i = 0;
-        let totalCards = 20; // Maximum étendu à 20 pour englober le mix des deux sites
-
-        function checkImage(index, callback) {
-            const testImg = new Image();
-            testImg.onload = () => callback(true);
-            testImg.onerror = () => callback(false);
-            testImg.src = `card_${index}.png?t=${Date.now()}`;
-        }
-
-        function animate() {
-            const c1 = document.getElementById('c1');
-            const c2 = document.getElementById('c2');
-            
-            c1.classList.toggle('fold');
-            c2.classList.toggle('fold');
-            
-            let nextIndex = (i + 1) % totalCards;
-
-            checkImage(nextIndex, (exists) => {
-                if (!exists && nextIndex > 1) {
-                    totalCards = nextIndex; 
-                    nextIndex = 0;
-                }
+    <div id="stage"></div>
+    <script>
+        async function init() {
+            try {
+                const res = await fetch('total.json?t=' + Date.now());
+                const { count } = await res.json();
+                const stage = document.getElementById('stage');
                 
-                setTimeout(() => {
-                    if (c1.classList.contains('fold')) {
-                        document.getElementById('img1').src = `card_${nextIndex}.png?t=${Date.now()}`;
-                    } else {
-                        document.getElementById('img2').src = `card_${nextIndex}.png?t=${Date.now()}`;
-                    }
-                    i = nextIndex;
-                }, 500);
-            });
-            
-            setTimeout(animate, 7000);
+                for(let i = 0; i < count; i++) {
+                    const img = document.createElement('img');
+                    img.src = `card_${i}.png?t=${Date.now()}`;
+                    img.className = i === 0 ? 'card' : 'card fold';
+                    img.id = `c${i}`;
+                    stage.appendChild(img);
+                }
+
+                let cur = 0;
+                setInterval(() => {
+                    document.getElementById(`c${cur}`).classList.add('fold');
+                    cur = (cur + 1) % count;
+                    document.getElementById(`c${cur}`).classList.remove('fold');
+                }, 7000);
+            } catch(e) { console.error("En attente des données..."); }
         }
-        animate();
+        init();
     </script>
 </body>
 </html>

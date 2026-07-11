@@ -49,11 +49,10 @@
         <div id="c2" class="card fold"><img id="img2" src="card_1.png"></div>
     </div>
 
-    <script>
+        <script>
         let i = 0;
-        let totalCards = 10; // Valeur par défaut maximale, s'ajustera si une image échoue
+        let totalCards = 20; // Maximum étendu à 20 pour englober le mix des deux sites
 
-        // Fonction pour tester si une image existe avant de l'afficher proprement
         function checkImage(index, callback) {
             const testImg = new Image();
             testImg.onload = () => callback(true);
@@ -65,22 +64,17 @@
             const c1 = document.getElementById('c1');
             const c2 = document.getElementById('c2');
             
-            // On bascule la classe fold pour créer l'effet de livre
             c1.classList.toggle('fold');
             c2.classList.toggle('fold');
             
-            // Calcul de l'index suivant potentiel
             let nextIndex = (i + 1) % totalCards;
 
-            // Vérification de l'existence de la carte suivante
             checkImage(nextIndex, (exists) => {
                 if (!exists && nextIndex > 1) {
-                    // Si la carte n'existe pas, on reboucle au début (0)
                     totalCards = nextIndex; 
                     nextIndex = 0;
                 }
                 
-                // Chargement de la suivante en douce
                 setTimeout(() => {
                     if (c1.classList.contains('fold')) {
                         document.getElementById('img1').src = `card_${nextIndex}.png?t=${Date.now()}`;

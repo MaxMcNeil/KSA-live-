@@ -15,6 +15,9 @@ jobs:
         with: 
           node-version: '18'
       
+      # Nettoyage pour éviter les conflits de dépendances corrompues
+      - run: rm -rf node_modules package-lock.json
+      
       # Installation automatique d'axios et cheerio définis dans ton package.json
       - run: npm install
       

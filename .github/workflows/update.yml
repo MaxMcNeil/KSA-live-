@@ -10,11 +10,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with: { node-version: '18' }
       
+      - uses: actions/setup-node@v3
+        with: 
+          node-version: '18'
+      
+      # Nettoyage pour éviter les conflits
       - run: rm -rf node_modules package-lock.json
+      
+      # Installation des dépendances et du navigateur Playwright
       - run: npm install
+      - run: npx playwright install chromium --with-deps
+      
+      # Exécution du script de capture
       - run: node capture.js
       
       - name: Commit et Push

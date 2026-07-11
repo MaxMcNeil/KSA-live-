@@ -4,10 +4,11 @@ const path = require('path');
 
 async function capture() {
     const browser = await chromium.launch();
-    const page = await browser.newPage();
+    // On définit une taille de fenêtre large pour que le texte soit bien affiché
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const tmpDir = './tmp_cards';
     
-    // Sélecteurs qui ciblent le conteneur parent (image + texte)
+    // Nouveaux sélecteurs plus larges pour inclure le texte
     const targets = [
         { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: '.media-card' },
         { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.news-card' }
@@ -17,15 +18,20 @@ async function capture() {
 
     for (const target of targets) {
         console.log("Navigation :", target.url);
-        await page.goto(target.url, { waitUntil: 'domcontentloaded' });
+        await page.goto(target.url, { waitUntil: 'networkidle' }); // On attend le chargement complet
         
-        // On attend que les cartes soient chargées
-        await page.waitForSelector(target.selector, { timeout: 10000 }).catch(() => {});
+        await page.waitForSelector(target.selector, { timeout: 10000 });
         
         const elements = await page.locator(target.selector).all();
-        // On ne prend que les 5 premières pour aller vite
         for (let i = 0; i < Math.min(elements.length, 5); i++) {
-            await elements[i].screenshot({ path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`) });
+            // On ajoute un petit scroll pour s'assurer que l'élément est bien "peint" par le navigateur
+            await elements[i].scrollIntoViewIfNeeded();
+            await page.waitForTimeout(1000); 
+            
+            await elements[i].screenshot({ 
+                path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`),
+                omitBackground: false // On garde le fond pour que le texte soit lisible
+            });
         }
     }
     await browser.close();

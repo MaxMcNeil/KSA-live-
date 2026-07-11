@@ -1,48 +1,32 @@
-const { chromium } = require('playwright');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const fs = require('fs');
-const path = require('path');
+const { chromium } = require('playwright');
 
 async function capture() {
     const browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
-    const tmpDir = './tmp_cards';
-    
-    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
+    const page = await browser.newPage({ viewport: { width: 600, height: 800 } });
+    let articles = [];
 
-    const targets = [
-        { 
-            url: 'https://www.spa.gov.sa/media?page=1&type=3', 
-            // On cible l'élément parent le plus large possible
-            selector: '.media-card' 
-        },
-        { 
-            url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', 
-            // On utilise un sélecteur plus large pour inclure le titre
-            selector: '.row .col-md-4' 
-        }
-    ];
+    // 1. Scraping (SPA)
+    try {
+        const { data } = await axios.get('https://www.spa.gov.sa/media?page=1&type=3');
+        const $ = cheerio.load(data);
+        $('.media-card').each((i, el) => {
+            if (articles.length < 10) articles.push({ title: $(el).find('h2').text().trim(), img: $(el).find('img').attr('src') });
+        });
+    } catch (e) {}
 
-    for (const target of targets) {
-        console.log("Navigation :", target.url);
-        await page.goto(target.url, { waitUntil: 'load', timeout: 60000 });
-        
-        // On attend que les éléments soient bien là
-        await page.waitForTimeout(3000);
-        
-        const elements = await page.locator(target.selector).all();
-        console.log(`Éléments trouvés pour ${target.url}: ${elements.length}`);
-        
-        for (let i = 0; i < Math.min(elements.length, 4); i++) {
-            await elements[i].scrollIntoViewIfNeeded();
-            
-            // Capture du bloc complet
-            await elements[i].screenshot({ 
-                path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`),
-                animations: 'disabled'
-            });
-        }
+    // 2. Génération des images
+    for (let i = 0; i < articles.length; i++) {
+        const html = `
+            <div style="width:600px; height:800px; background:white; padding:40px; font-family:sans-serif; text-align:center;">
+                <img src="${articles[i].img}" style="width:100%; height:500px; object-fit:cover; border-radius:20px;">
+                <h1 style="color:#333; margin-top:20px;">${articles[i].title}</h1>
+            </div>`;
+        await page.setContent(html);
+        await page.screenshot({ path: `card_${i}.png` });
     }
     await browser.close();
 }
 capture();
-        

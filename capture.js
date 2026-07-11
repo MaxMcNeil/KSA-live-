@@ -8,18 +8,10 @@ async function capture() {
     const page = await context.newPage();
     const tmpDir = './tmp_cards';
     
-    // Sélecteurs ultra-ciblés : on cherche des éléments qui ont une image ET un titre
+    // Sélecteurs plus larges pour ne rien rater
     const sources = [
-        { 
-            url: 'https://www.spa.gov.sa/media?page=1&type=3', 
-            // On cible les éléments qui ont une classe liée à 'card' ET qui contiennent une image
-            selector: '.media-card:has(img):has(h2)' 
-        },
-        { 
-            url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', 
-            // On cible les colonnes qui contiennent une image ET un titre h3
-            selector: '.col-md-4:has(img):has(h3), .news-card:has(img):has(h3)' 
-        }
+        { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: '.media-card' },
+        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.col-md-4' }
     ];
 
     let allCards = [];
@@ -27,36 +19,40 @@ async function capture() {
     try {
         for (const source of sources) {
             console.log("Navigation vers :", source.url);
-            await page.goto(source.url, { waitUntil: 'networkidle', timeout: 30000 });
-            await page.waitForTimeout(5000); // Temps nécessaire pour que les images chargent
+            
+            // 1. Navigation simple sans attendre le réseau (rapide)
+            await page.goto(source.url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            
+            // 2. Attente active : on attend que les cartes soient là
+            await page.waitForSelector(source.selector, { timeout: 15000 }).catch(() => {});
+            
+            // 3. Petite pause pour laisser le JS finir de remplir les images
+            await page.waitForTimeout(5000); 
             
             const found = await page.locator(source.selector).all();
+            console.log(`Trouvé ${found.length} éléments potentiels sur ${source.url}`);
             
-            // Filtre supplémentaire : on ne garde que les éléments qui ont une surface d'affichage correcte
             for (const el of found) {
                 const box = await el.boundingBox();
-                if (box && box.height > 150 && box.width > 150) {
+                // On vérifie que l'élément est bien visible et a une taille
+                if (box && box.height > 100 && box.width > 100) {
                     allCards.push(el);
                 }
             }
-            console.log(`Trouvé ${allCards.length} cartes valides sur ${source.url}`);
         }
 
         const limit = Math.min(allCards.length, 20);
-        if (limit === 0) throw new Error("Aucune carte valide trouvée avec le nouveau sélecteur.");
+        if (limit === 0) throw new Error("Aucune carte trouvée, les sélecteurs sont peut-être obsolètes.");
 
         if (fs.existsSync(tmpDir)) fs.rmSync(tmpDir, { recursive: true });
         fs.mkdirSync(tmpDir);
         
         for (let i = 0; i < limit; i++) {
-            try {
-                await allCards[i].screenshot({ path: path.join(tmpDir, `card_${i}.png`), timeout: 10000 });
-                fs.copyFileSync(path.join(tmpDir, `card_${i}.png`), `card_${i}.png`);
-            } catch (e) {
-                console.warn(`Échec capture carte ${i}`);
-            }
+            await allCards[i].screenshot({ path: path.join(tmpDir, `card_${i}.png`) });
+            fs.copyFileSync(path.join(tmpDir, `card_${i}.png`), `card_${i}.png`);
         }
-        console.log("Capture et mixage réussis.");
+        
+        console.log("Succès :", limit, "cartes capturées.");
     } catch (e) {
         console.error("Erreur critique :", e.message);
         process.exit(1);

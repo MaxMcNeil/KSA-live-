@@ -4,65 +4,48 @@
     <meta charset="UTF-8">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700&display=swap');
-
         body { background: transparent; margin: 0; font-family: 'Cairo', sans-serif; overflow: hidden; width: 1080px; height: 1920px; }
-
         #news-container { position: absolute; top: 300px; left: 50px; right: 50px; }
-
-        .news-card {
-            background: #fff;
-            border-radius: 20px;
-            overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            transform: scale(0.8);
-            opacity: 0;
-            transition: all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .news-card.active { transform: scale(1); opacity: 1; }
-
-        .news-img { width: 100%; height: 400px; object-fit: cover; }
-        .news-content { padding: 40px; }
-        .title { font-size: 45px; color: #1a1a1a; font-weight: 700; line-height: 1.3; }
+        .news-card { background: #fff; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.5s; }
+        .news-card.active { opacity: 1; }
+        .news-img { width: 100%; height: 500px; object-fit: cover; background: #ddd; }
+        .title { padding: 40px; font-size: 45px; color: #000; font-weight: 700; line-height: 1.3; }
     </style>
 </head>
 <body>
     <div id="news-container"></div>
 
     <script>
+        // Utilisation du service rss2json qui gère les images et le contournement des blocages
         const rssUrl = "https://rss.app/feeds/u5mG1gqV2V8iCq2R.xml";
-        let newsItems = [];
-        let currentIndex = 0;
 
         async function fetchNews() {
-            const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
-            const data = await response.json();
-            newsItems = data.items;
-            showNext();
+            try {
+                const res = await fetch('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(rssUrl));
+                const data = await res.json();
+                render(data.items);
+            } catch (e) {
+                document.body.innerHTML = "<h1 style='color:red; padding:50px;'>Erreur de chargement flux. Vérifiez votre URL RSS.</h1>";
+            }
         }
 
-        function showNext() {
+        function render(items, idx = 0) {
             const container = document.getElementById('news-container');
-            const item = newsItems[currentIndex];
+            const item = items[idx % items.length];
             
-            // Extraction de l'image (parfois dans 'enclosure' ou 'description')
-            const imgUrl = item.enclosure?.link || item.thumbnail || 'https://via.placeholder.com/1080x400';
+            // Extraction directe de l'image via enclosure ou le contenu media
+            const img = item.enclosure.link || item.thumbnail || "";
 
             container.innerHTML = `
-                <div class="news-card">
-                    <img class="news-img" src="${imgUrl}" onerror="this.src='https://via.placeholder.com/1080x400'">
-                    <div class="news-content">
-                        <div class="title">${item.title}</div>
-                    </div>
+                <div class="news-card active">
+                    ${img ? `<img class="news-img" src="${img}">` : ""}
+                    <div class="title">${item.title}</div>
                 </div>
             `;
 
-            setTimeout(() => container.firstChild.classList.add('active'), 100);
-
             setTimeout(() => {
-                container.firstChild.style.opacity = '0';
-                currentIndex = (currentIndex + 1) % newsItems.length;
-                setTimeout(showNext, 800);
-            }, 6000);
+                render(items, idx + 1);
+            }, 7000);
         }
 
         fetchNews();

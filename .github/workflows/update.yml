@@ -18,6 +18,6 @@ jobs:
           git config user.name "bot"
           git config user.email "bot@github.com"
           git add .
-          git commit -m "Update dynamic cards" || echo "No changes"
+          git commit -m "Update cards" || echo "No changes"
           git push
           

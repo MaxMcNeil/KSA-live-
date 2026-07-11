@@ -4,42 +4,45 @@ const path = require('path');
 
 async function capture() {
     const browser = await chromium.launch();
-    // Taille fixe pour éviter le mode mobile qui cache du texte
-    const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
+    const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
     const tmpDir = './tmp_cards';
     
-    // On cible des sélecteurs plus larges pour inclure le titre et l'image
-    const targets = [
-        { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: '.media-card' },
-        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.card' }
-    ];
-
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
+
+    const targets = [
+        { 
+            url: 'https://www.spa.gov.sa/media?page=1&type=3', 
+            // On cible l'élément parent le plus large possible
+            selector: '.media-card' 
+        },
+        { 
+            url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', 
+            // On utilise un sélecteur plus large pour inclure le titre
+            selector: '.row .col-md-4' 
+        }
+    ];
 
     for (const target of targets) {
         console.log("Navigation :", target.url);
         await page.goto(target.url, { waitUntil: 'load', timeout: 60000 });
         
-        // Attendre que le contenu soit présent
-        await page.waitForSelector(target.selector, { timeout: 20000 }).catch(() => {});
-        
-        // Scroll down pour forcer le chargement des images/textes (lazy loading)
-        await page.evaluate(() => window.scrollTo(0, 500));
-        await page.waitForTimeout(2000); 
+        // On attend que les éléments soient bien là
+        await page.waitForTimeout(3000);
         
         const elements = await page.locator(target.selector).all();
+        console.log(`Éléments trouvés pour ${target.url}: ${elements.length}`);
         
-        for (let i = 0; i < Math.min(elements.length, 5); i++) {
-            // scrollIntoViewIfNeeded est la clé pour que le texte s'affiche correctement
+        for (let i = 0; i < Math.min(elements.length, 4); i++) {
             await elements[i].scrollIntoViewIfNeeded();
-            await page.waitForTimeout(500); 
             
+            // Capture du bloc complet
             await elements[i].screenshot({ 
                 path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`),
-                animations: 'disabled' // Désactive les animations pour éviter les captures floues
+                animations: 'disabled'
             });
         }
     }
     await browser.close();
 }
 capture();
+        

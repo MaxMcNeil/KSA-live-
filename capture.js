@@ -1,23 +1,38 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+const https = require('https');
 const fs = require('fs');
+const cheerio = require('cheerio');
 const { chromium } = require('playwright');
+
+// Fonction pour récupérer le HTML sans utiliser fetch/axios
+function getHtml(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', (c) => data += c);
+            res.on('end', () => resolve(data));
+        }).on('error', reject);
+    });
+}
 
 async function capture() {
     const browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 600, height: 800 } });
+    
+    // Scraping des données avec Cheerio (via https natif)
+    const spaHtml = await getHtml('https://www.spa.gov.sa/media?page=1&type=3');
+    const $ = cheerio.load(spaHtml);
+    
     let articles = [];
+    $('.media-card').each((i, el) => {
+        if (articles.length < 5) {
+            articles.push({
+                title: $(el).find('h2').text().trim(),
+                img: $(el).find('img').attr('src')
+            });
+        }
+    });
 
-    // 1. Scraping (SPA)
-    try {
-        const { data } = await axios.get('https://www.spa.gov.sa/media?page=1&type=3');
-        const $ = cheerio.load(data);
-        $('.media-card').each((i, el) => {
-            if (articles.length < 10) articles.push({ title: $(el).find('h2').text().trim(), img: $(el).find('img').attr('src') });
-        });
-    } catch (e) {}
-
-    // 2. Génération des images
+    // Génération des images
     for (let i = 0; i < articles.length; i++) {
         const html = `
             <div style="width:600px; height:800px; background:white; padding:40px; font-family:sans-serif; text-align:center;">

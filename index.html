@@ -4,36 +4,42 @@
     <style>
         body { margin: 0; width: 1080px; height: 1920px; background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d); overflow: hidden; display: flex; align-items: center; justify-content: center; }
         
-                /* Augmentation de la taille pour remplir l'écran */
+        /* Augmentation de la taille pour remplir l'écran */
         #stage { 
             width: 95%;      /* Utilise 95% de la largeur de l'écran */
             max-width: 1000px; /* Limite maximale pour ne pas déborder */
-            height: 1200px;    /* Augmentation de la hauteur */
-            perspective: 1000px; 
+            height: 1080px;    /* Réduit de 10% comme demandé */
+            perspective: 2000px; /* Perspective augmentée pour un effet livre plus marqué */
             margin: auto;
+            position: relative;
         }
 
         .card { 
             width: 100%; 
             height: 100%; 
             position: absolute;
-            transition: transform 1s ease-in-out, opacity 1s;
+            transition: transform 1s ease-in-out, opacity 0.5s;
             transform-origin: left center;
             backface-visibility: hidden;
-            border-radius: 30px; /* Coins un peu plus arrondis */
+            border-radius: 30px; 
             overflow: hidden;
             box-shadow: 0 20px 40px rgba(0,0,0,0.4);
-            background: white; /* Fond blanc derrière l'image */
+            background: white; 
+        }
+        
+        /* L'effet de pliage 3D */
+        .card.fold { 
+            transform: rotateY(-180deg); 
+            opacity: 0.5; 
         }
 
         img { 
             width: 100%; 
             height: 100%; 
-            object-fit: contain; /* Garde l'image entière sans couper */
-            padding: 20px;       /* Petite marge interne dans la carte blanche */
+            object-fit: contain; 
+            padding: 20px;       
             box-sizing: border-box;
         }
-
     </style>
 </head>
 <body>
@@ -61,7 +67,7 @@
                 } else {
                     document.getElementById('img2').src = `card_${i}.png?t=${Date.now()}`;
                 }
-            }, 1000);
+            }, 500);
             
             setTimeout(animate, 7000);
         }

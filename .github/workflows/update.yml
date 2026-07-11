@@ -10,27 +10,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with: { node-version: '18' }
       
-      # UTILISE LE CACHE POUR PLAYWRIGHT (gain de temps énorme)
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright
-          
+      - uses: actions/setup-node@v3
+        with: 
+          node-version: '18'
+      
+      # Installation automatique d'axios et cheerio définis dans ton package.json
       - run: npm install
-      - run: npx playwright install chromium --with-deps
+      
+      # Exécution du script de capture ultra-rapide
       - run: node capture.js
       
       - name: Commit et Push
         run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          # Supprimer les anciens fichiers PNG avant d'ajouter les nouveaux pour garder un dépôt propre
+          # Supprimer les anciens fichiers PNG avant d'ajouter les nouveaux
           git rm -f *.png || true
           git add *.png
-          # Ne commit que s'il y a des changements
+          # Commit uniquement en cas de changement
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update cards" && git push)
           

@@ -1,7 +1,8 @@
 {
-  "name": "akhbaar24-live-feed",
+  "name": "ksa-live-feed",
   "version": "1.0.0",
   "dependencies": {
-    "playwright": "^1.40.0"
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0-rc.12"
   }
 }

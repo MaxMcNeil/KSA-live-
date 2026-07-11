@@ -6,32 +6,18 @@ on:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    permissions: contents: write
     steps:
       - uses: actions/checkout@v3
-      
       - uses: actions/setup-node@v3
-        with: 
-          node-version: '18'
-      
-      - name: Install dependencies
-        run: |
-          npm install
-          npx playwright install chromium --with-deps
-      
-      - name: Run capture
-        run: node capture.js
-      
-      - name: Commit et Push
-        run: |
+        with: { node-version: '18' }
+      - run: npm install && npx playwright install chromium --with-deps
+      - run: rm -f *.png total.json
+      - run: node capture.js
+      - run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          if ls *.png >/dev/null 2>&1; then
-            git add *.png
-            git commit -m "Update cards" || echo "Rien à committer"
-            git push
-          else
-            echo "Aucune image, pas de commit."
-          fi
+          git add .
+          git commit -m "Update dynamic cards" || echo "No changes"
+          git push
           

@@ -1,26 +1,6 @@
-const https = require('https');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const cheerio = require('cheerio');
-
-async function getHtml(url) {
-    return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
-            let data = '';
-            res.on('data', (chunk) => data += chunk);
-            res.on('end', () => resolve(data));
-        }).on('error', reject);
-    });
-}
-
-async function downloadImage(url, dest) {
-    return new Promise((resolve, reject) => {
-        https.get(url, (res) => {
-            const file = fs.createWriteStream(dest);
-            res.pipe(file);
-            file.on('finish', () => file.close(resolve));
-        }).on('error', reject);
-    });
-}
 
 async function capture() {
     const sources = [
@@ -29,20 +9,27 @@ async function capture() {
     ];
 
     let images = [];
+    
     for (const source of sources) {
-        console.log("Lecture de :", source.url);
-        const html = await getHtml(source.url);
-        const $ = cheerio.load(html);
-        $(source.selector).find('img').each((i, el) => {
-            const src = $(el).attr('src');
-            if (src && src.startsWith('http')) images.push(src);
-        });
+        try {
+            // Téléchargement du HTML via curl
+            const html = execSync(`curl -sL "${source.url}"`).toString();
+            const $ = cheerio.load(html);
+            
+            $(source.selector).find('img').each((i, el) => {
+                const src = $(el).attr('src');
+                if (src && src.startsWith('http')) images.push(src);
+            });
+        } catch (e) { console.error("Erreur lecture :", e.message); }
     }
 
     const limit = Math.min(images.length, 20);
     for (let i = 0; i < limit; i++) {
-        await downloadImage(images[i], `card_${i}.png`);
-        console.log(`Image ${i} enregistrée.`);
+        try {
+            // Téléchargement de l'image via curl
+            execSync(`curl -sL "${images[i]}" -o card_${i}.png`);
+            console.log(`Image ${i} enregistrée.`);
+        } catch (e) { console.error(`Erreur image ${i}`); }
     }
 }
 capture();

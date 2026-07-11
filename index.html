@@ -18,7 +18,12 @@
         /* État "plié" */
         .card.fold { transform: rotateY(-180deg); opacity: 0; }
         
-        img { width: 100%; height: 100%; object-fit: cover; }
+img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: contain; /* C'est cette ligne qui fait toute la différence */
+    background-color: white; /* Optionnel : remplit le vide s'il y en a */
+}
     </style>
 </head>
 <body>

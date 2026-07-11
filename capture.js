@@ -1,14 +1,24 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
+const https = require('https');
 const fs = require('fs');
+const cheerio = require('cheerio');
 
-async function downloadImage(url, filename) {
-    const writer = fs.createWriteStream(filename);
-    const response = await axios({ url, method: 'GET', responseType: 'stream' });
-    response.data.pipe(writer);
+async function getHtml(url) {
     return new Promise((resolve, reject) => {
-        writer.on('finish', resolve);
-        writer.on('error', reject);
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => resolve(data));
+        }).on('error', reject);
+    });
+}
+
+async function downloadImage(url, dest) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            const file = fs.createWriteStream(dest);
+            res.pipe(file);
+            file.on('finish', () => file.close(resolve));
+        }).on('error', reject);
     });
 }
 
@@ -18,29 +28,21 @@ async function capture() {
         { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.col-md-4' }
     ];
 
-    let imageUrls = [];
-
+    let images = [];
     for (const source of sources) {
-        try {
-            console.log("Lecture de :", source.url);
-            const { data } = await axios.get(source.url);
-            const $ = cheerio.load(data);
-            
-            $(source.selector).find('img').each((i, el) => {
-                const src = $(el).attr('src');
-                if (src && src.startsWith('http')) imageUrls.push(src);
-            });
-        } catch (e) { console.error("Erreur lecture :", e.message); }
+        console.log("Lecture de :", source.url);
+        const html = await getHtml(source.url);
+        const $ = cheerio.load(html);
+        $(source.selector).find('img').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && src.startsWith('http')) images.push(src);
+        });
     }
 
-    // On ne garde que les 20 premières images
-    const filesToKeep = imageUrls.slice(0, 20);
-    
-    for (let i = 0; i < filesToKeep.length; i++) {
-        try {
-            await downloadImage(filesToKeep[i], `card_${i}.png`);
-            console.log(`Image ${i} enregistrée.`);
-        } catch (e) { console.error(`Erreur image ${i}`); }
+    const limit = Math.min(images.length, 20);
+    for (let i = 0; i < limit; i++) {
+        await downloadImage(images[i], `card_${i}.png`);
+        console.log(`Image ${i} enregistrée.`);
     }
 }
 capture();

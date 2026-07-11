@@ -60,7 +60,7 @@
             c2.classList.toggle('fold');
             
             // Chargement de la suivante en douce
-            i = (i + 1) % 5;
+            i = (i + 1) % 10;
             setTimeout(() => {
                 if (c1.classList.contains('fold')) {
                     document.getElementById('img1').src = `card_${i}.png?t=${Date.now()}`;

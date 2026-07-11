@@ -1,7 +1,7 @@
 name: Capture News
 on:
   schedule:
-    - cron: '0 */8 * * *' # À 0 minute, toutes les 8 heures
+    - cron: '0 */8 * * *'
   workflow_dispatch:
 jobs:
   capture:
@@ -12,12 +12,25 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with: { node-version: '18' }
+      
+      # UTILISE LE CACHE POUR PLAYWRIGHT (gain de temps énorme)
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright
+          
       - run: npm install
-      - run: npx playwright install chromium
+      - run: npx playwright install chromium --with-deps
       - run: node capture.js
+      
       - name: Commit et Push
         run: |
           git config user.name "bot"
+          git config user.email "bot@github.com"
+          # Supprimer les anciens fichiers PNG avant d'ajouter les nouveaux pour garder un dépôt propre
+          git rm -f *.png || true
           git add *.png
+          # Ne commit que s'il y a des changements
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update cards" && git push)
           

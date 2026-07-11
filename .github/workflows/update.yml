@@ -15,32 +15,22 @@ jobs:
         with: 
           node-version: '18'
       
-      # Nettoyage pour éviter les conflits
-      - run: rm -rf node_modules package-lock.json
+      - name: Install dependencies
+        run: |
+          npm install
+          npx playwright install chromium --with-deps
       
-      # Installation des dépendances et du navigateur Playwright
-      - run: npm install
-      - run: npx playwright install chromium --with-deps
-            # ... (juste avant - run: node capture.js)
-      - name: Vérifier la présence des fichiers
-        run: ls -la  # Cela affichera la liste des fichiers dans les logs
-
-      - name: Exécution du script de capture
+      - name: Run capture
         run: node capture.js
-        
-      # Exécution du script de capture
-      - run: node capture.js
       
       - name: Commit et Push
         run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          # Supprimer les anciens fichiers
-          git rm -f *.png || true
-          # On ajoute seulement si des fichiers ont été créés
           if ls *.png >/dev/null 2>&1; then
             git add *.png
-            git commit -m "Update cards" && git push
+            git commit -m "Update cards" || echo "Rien à committer"
+            git push
           else
             echo "Aucune image, pas de commit."
           fi

@@ -1,35 +1,41 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html>
 <head>
-    <meta charset="UTF-8">
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; height: 1920px; width: 1080px; }
-        #display { display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .card { width: 90%; background: #1a1a1a; padding: 30px; border-radius: 20px; text-align: center; transition: 0.5s; opacity: 0; transform: scale(0.9); }
-        .card.active { opacity: 1; transform: scale(1); }
-        img { width: 100%; border-radius: 10px; margin-bottom: 20px; }
+        body { margin: 0; background: transparent; width: 1080px; height: 1920px; overflow: hidden; }
+        .buffer { position: absolute; width: 100%; transition: opacity 1s; opacity: 0; }
+        .show { opacity: 1; }
     </style>
 </head>
 <body>
-    <div id="display"></div>
+    <div id="layer1" class="buffer"></div>
+    <div id="layer2" class="buffer"></div>
+
     <script>
-        let idx = 0;
-        async function update() {
-            try {
-                const res = await fetch('news.json?t=' + Date.now());
-                const data = await res.json();
-                const item = data[idx % data.length];
-                const disp = document.getElementById('display');
-                disp.innerHTML = `<div class="card" id="card">
-                    ${item.image ? `<img src="${item.image}">` : ""}
-                    <h1>${item.title}</h1>
-                </div>`;
-                setTimeout(() => document.getElementById('card').classList.add('active'), 100);
-                idx++;
-            } catch(e) { console.log("Attente données..."); }
-            setTimeout(update, 7000);
+        let toggle = true;
+        let i = 0;
+        
+        function preload(index) {
+            const img = new Image();
+            img.src = `card_${index}.png?t=${Date.now()}`;
         }
-        update();
+
+        function play() {
+            const active = toggle ? 'layer1' : 'layer2';
+            const hidden = toggle ? 'layer2' : 'layer1';
+            const container = document.getElementById(active);
+            
+            container.innerHTML = `<img src="card_${i}.png?t=${Date.now()}" style="width:100%">`;
+            container.classList.add('show');
+            document.getElementById(hidden).classList.remove('show');
+            
+            toggle = !toggle;
+            i = (i + 1) % 5;
+            preload(i); // Précharge la suivante
+            
+            setTimeout(play, 7000);
+        }
+        play();
     </script>
 </body>
 </html>

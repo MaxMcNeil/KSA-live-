@@ -4,33 +4,39 @@ const path = require('path');
 
 async function capture() {
     const browser = await chromium.launch();
-    // On définit une taille de fenêtre large pour que le texte soit bien affiché
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    // Taille fixe pour éviter le mode mobile qui cache du texte
+    const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
     const tmpDir = './tmp_cards';
     
-    // Nouveaux sélecteurs plus larges pour inclure le texte
+    // On cible des sélecteurs plus larges pour inclure le titre et l'image
     const targets = [
         { url: 'https://www.spa.gov.sa/media?page=1&type=3', selector: '.media-card' },
-        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.news-card' }
+        { url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', selector: '.card' }
     ];
 
     if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir);
 
     for (const target of targets) {
         console.log("Navigation :", target.url);
-        await page.goto(target.url, { waitUntil: 'networkidle' }); // On attend le chargement complet
+        await page.goto(target.url, { waitUntil: 'load', timeout: 60000 });
         
-        await page.waitForSelector(target.selector, { timeout: 10000 });
+        // Attendre que le contenu soit présent
+        await page.waitForSelector(target.selector, { timeout: 20000 }).catch(() => {});
+        
+        // Scroll down pour forcer le chargement des images/textes (lazy loading)
+        await page.evaluate(() => window.scrollTo(0, 500));
+        await page.waitForTimeout(2000); 
         
         const elements = await page.locator(target.selector).all();
+        
         for (let i = 0; i < Math.min(elements.length, 5); i++) {
-            // On ajoute un petit scroll pour s'assurer que l'élément est bien "peint" par le navigateur
+            // scrollIntoViewIfNeeded est la clé pour que le texte s'affiche correctement
             await elements[i].scrollIntoViewIfNeeded();
-            await page.waitForTimeout(1000); 
+            await page.waitForTimeout(500); 
             
             await elements[i].screenshot({ 
                 path: path.join(tmpDir, `card_${target.url.includes('spa') ? 'spa' : 'akh'}_${i}.png`),
-                omitBackground: false // On garde le fond pour que le texte soit lisible
+                animations: 'disabled' // Désactive les animations pour éviter les captures floues
             });
         }
     }

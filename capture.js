@@ -13,17 +13,21 @@ async function main() {
         { 
             url: 'https://www.spa.gov.sa/media?page=1&type=3', 
             selectors: [
-                '.media-card',
-                '[class*="media-card"]',
+                // SPA specific - looking for the rounded card containers
+                '.media-item',
+                '[class*="media-item"]',
+                '.infografic-item',
+                '[class*="infografic"]',
+                '.gallery-item',
+                '[class*="gallery-item"]',
+                '.col-md-6',
+                '[class*="col-"]',
+                'div[class*="col"]',
+                'a[class*="col"]',
                 '.card',
                 '[class*="card"]',
                 '[class*="article"]',
-                'article',
-                '.news-item',
-                '[class*="news-item"]',
-                '[role="article"]',
-                '.row',
-                '[class*="col"]'
+                'article'
             ],
             name: 'SPA' 
         },
@@ -67,14 +71,10 @@ async function main() {
             
             if (elements.length === 0) {
                 console.log(`⚠ Aucun élément trouvé avec les sélecteurs fournis`);
+                
                 // Save page screenshot for debugging
                 await page.screenshot({ path: `debug_${s.name}.png` });
                 console.log(`Sauvegardé screenshot de débogage: debug_${s.name}.png`);
-                
-                // Also try to dump HTML structure for debugging
-                const html = await page.content();
-                fs.writeFileSync(`debug_${s.name}_html.txt`, html.slice(0, 5000));
-                console.log(`Sauvegardé extrait HTML: debug_${s.name}_html.txt`);
                 continue;
             }
             

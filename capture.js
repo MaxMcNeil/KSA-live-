@@ -4,10 +4,10 @@ const fs = require('fs');
 async function main() {
     console.log("--- DÉBUT DE LA CAPTURE ---");
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
-    const page = await browser.newPage({ viewport: { width: 800, height: 600 } });
-    
-    // Add user agent to avoid blocking
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    const page = await browser.newPage({ 
+        viewport: { width: 800, height: 600 },
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    });
     
     const sources = [
         { 

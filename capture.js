@@ -13,7 +13,6 @@ async function main() {
         { 
             url: 'https://www.spa.gov.sa/media?page=1&type=3', 
             selectors: [
-                // Look for the outer container (rounded boxes with images)
                 'a[class*="media"]',
                 'a[class*="col"]',
                 'div[class*="media-item"]',
@@ -69,9 +68,31 @@ async function main() {
             if (elements.length === 0) {
                 console.log(`⚠ Aucun élément trouvé avec les sélecteurs fournis`);
                 
+                // Debug: Inspect the page HTML structure
+                const pageContent = await page.evaluate(() => {
+                    const allElements = document.querySelectorAll('*');
+                    const topLevelElements = Array.from(allElements)
+                        .filter(el => el.children.length > 0)
+                        .slice(0, 20)
+                        .map(el => ({
+                            tag: el.tagName,
+                            className: el.className,
+                            id: el.id,
+                            children: el.children.length
+                        }));
+                    return topLevelElements;
+                });
+                
+                console.log(`Page structure sample:`, JSON.stringify(pageContent, null, 2));
+                
                 // Save page screenshot for debugging
                 await page.screenshot({ path: `debug_${s.name}.png` });
                 console.log(`Sauvegardé screenshot de débogage: debug_${s.name}.png`);
+                
+                // Save HTML dump for inspection
+                const html = await page.content();
+                fs.writeFileSync(`debug_${s.name}.html`, html);
+                console.log(`Sauvegardé dump HTML: debug_${s.name}.html`);
                 continue;
             }
             
@@ -90,13 +111,7 @@ async function main() {
                         // Only capture if card is reasonably sized (not just text)
                         if (box.width < 100 || box.height < 100) {
                             console.warn(`  ⚠ Card ${i} trop petit (${box.width}x${box.height}), essai du parent...`);
-                            // Try to get parent element
-                            const parent = await elements[i].evaluate(el => el.parentElement);
-                            if (parent) {
-                                // Can't directly screenshot parent via locator, skip this approach
-                                console.warn(`  Skipping small element`);
-                                continue;
-                            }
+                            continue;
                         }
                     }
                     

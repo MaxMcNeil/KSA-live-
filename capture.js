@@ -12,12 +12,29 @@ async function main() {
     const sources = [
         { 
             url: 'https://www.spa.gov.sa/media?page=1&type=3', 
-            selectors: ['.media-card', '[class*="card"]', '.item', '[class*="media"]'],
+            selectors: [
+                '.media-card',
+                '[class*="media-card"]',
+                '.card',
+                '[class*="article"]',
+                'article',
+                '[class*="news-item"]',
+                '[role="article"]'
+            ],
             name: 'SPA' 
         },
         { 
             url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB', 
-            selectors: ['.news-card', '.news-item', '[class*="news"]', 'article'],
+            selectors: [
+                '.news-card',
+                '[class*="news-card"]',
+                '.article-card',
+                '[class*="article-card"]',
+                '.post',
+                'article',
+                '[class*="item"]',
+                '[role="article"]'
+            ],
             name: 'Akhbaar24' 
         }
     ];
@@ -30,14 +47,16 @@ async function main() {
             await page.goto(s.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
             
             // Wait a bit for content to load
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(3000);
             
             // Try each selector until we find elements
             let elements = [];
+            let foundSelector = '';
             for (const selector of s.selectors) {
                 elements = await page.locator(selector).all();
                 if (elements.length > 0) {
                     console.log(`✓ Trouvé ${elements.length} éléments avec le sélecteur: ${selector}`);
+                    foundSelector = selector;
                     break;
                 }
             }
@@ -50,11 +69,17 @@ async function main() {
                 continue;
             }
             
-            // Capture up to 10 elements
+            // Capture up to 10 elements - capture full card with all content
             for (let i = 0; i < Math.min(elements.length, 10); i++) {
                 try {
+                    // Get the bounding box to ensure we capture the entire element
+                    const box = await elements[i].boundingBox();
+                    if (box) {
+                        console.log(`  Card ${i}: ${box.width}x${box.height}px`);
+                    }
+                    
                     await elements[i].screenshot({ path: `card_${count}.png` });
-                    console.log(`✓ Capture ${count} générée (${s.name} #${i})`);
+                    console.log(`✓ Capture ${count} générée (${s.name} #${i}) avec le sélecteur: ${foundSelector}`);
                     count++;
                 } catch (e) {
                     console.warn(`  ⚠ Impossible de capturer l'élément ${i}: ${e.message}`);

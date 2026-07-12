@@ -16,10 +16,14 @@ async function main() {
                 '.media-card',
                 '[class*="media-card"]',
                 '.card',
+                '[class*="card"]',
                 '[class*="article"]',
                 'article',
+                '.news-item',
                 '[class*="news-item"]',
-                '[role="article"]'
+                '[role="article"]',
+                '.row',
+                '[class*="col"]'
             ],
             name: 'SPA' 
         },
@@ -66,6 +70,11 @@ async function main() {
                 // Save page screenshot for debugging
                 await page.screenshot({ path: `debug_${s.name}.png` });
                 console.log(`Sauvegardé screenshot de débogage: debug_${s.name}.png`);
+                
+                // Also try to dump HTML structure for debugging
+                const html = await page.content();
+                fs.writeFileSync(`debug_${s.name}_html.txt`, html.slice(0, 5000));
+                console.log(`Sauvegardé extrait HTML: debug_${s.name}_html.txt`);
                 continue;
             }
             

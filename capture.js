@@ -18,6 +18,7 @@ async function main() {
     ];
 
     let count = 0;
+    const capturedHashes = new Set(); // Track captured content by hash to avoid duplicates
     
     for (const s of sources) {
         const page = await browser.newPage({ 
@@ -32,154 +33,157 @@ async function main() {
             // Wait for content to fully load
             await page.waitForTimeout(3000);
             
-            // Save full page screenshot
-            await page.screenshot({ path: `debug_${s.name}_full.png` });
-            console.log(`✓ Screenshot sauvegardé: debug_${s.name}_full.png`);
-            
-            // Get page HTML and save it
+            // Get page HTML and parse with cheerio
             const html = await page.content();
-            fs.writeFileSync(`debug_${s.name}.html`, html);
-            console.log(`✓ HTML sauvegardé: debug_${s.name}.html`);
-            
-            // Parse HTML with cheerio to analyze structure
             const $ = cheerio.load(html);
             
-            // Log all images on page to understand structure
-            const images = $('img');
-            console.log(`\n✓ Total images trouvées: ${images.length}`);
+            console.log(`\n🔍 Analyzing ${s.name} page structure...`);
             
-            // Look for common card/article containers
-            const possibleSelectors = [
-                { selector: '[class*="card"]', name: 'class contains card' },
-                { selector: '[class*="item"]', name: 'class contains item' },
-                { selector: '[class*="media"]', name: 'class contains media' },
-                { selector: '[class*="col"]', name: 'class contains col' },
-                { selector: 'article', name: 'article tags' },
-                { selector: 'a[href]', name: 'all links' },
-                { selector: 'div[class][class*="media"]', name: 'div with media class' },
-                { selector: '[class*="infografic"]', name: 'infografic' },
-                { selector: '[class*="gallery"]', name: 'gallery' }
-            ];
+            // Find all potential clickable card elements
+            let cardElements = [];
             
-            console.log(`\nAnalyzing possible selectors for ${s.name}:`);
-            for (const { selector, name } of possibleSelectors) {
-                const matches = $(selector).length;
-                if (matches > 0 && matches < 100) {
-                    console.log(`  ${name}: ${matches} éléments`);
-                    
-                    // Show first element details
-                    const first = $(selector).first();
-                    const html = first.html();
-                    if (html) {
-                        console.log(`    Aperçu: ${html.substring(0, 100)}...`);
-                    }
+            if (s.name === 'SPA') {
+                // For SPA: Look for media cards - typically col-md-6 or similar with links
+                cardElements = $('a.col-md-6, div.col-md-6 a, a[href*="/media"]').toArray();
+                console.log(`Found ${cardElements.length} potential SPA cards`);
+                
+                if (cardElements.length === 0) {
+                    // Fallback: any link with image
+                    cardElements = $('a[href] img').parent().toArray();
+                    console.log(`Fallback: Found ${cardElements.length} cards with images`);
+                }
+            } else {
+                // For Akhbaar24: Look for news cards
+                cardElements = $('a.news-card, .news-item a, article a, a[href*="/news"]').toArray();
+                console.log(`Found ${cardElements.length} potential Akhbaar24 cards`);
+                
+                if (cardElements.length === 0) {
+                    // Fallback: any article or card-like container
+                    cardElements = $('article, [class*="news"], [class*="post"]').toArray();
+                    console.log(`Fallback: Found ${cardElements.length} article containers`);
                 }
             }
             
-            // Find all clickable elements with images/links
-            console.log(`\nRecherche d'éléments cliquables avec images:`);
-            const clickables = $('a, button, [role="button"], [onclick]');
-            let imageCount = 0;
-            clickables.each((i, el) => {
-                if (i < 5) { // Show first 5
-                    const $el = $(el);
-                    const hasImg = $el.find('img').length > 0;
-                    const href = $el.attr('href');
-                    const classes = $el.attr('class');
-                    if (hasImg || href) {
-                        console.log(`  [${i}] ${$el.prop('tagName')} - class="${classes}" href="${href}" - has_img: ${hasImg}`);
-                        imageCount++;
-                    }
-                }
-            });
+            // Filter and capture cards
+            console.log(`\n📸 Capturing cards from ${s.name}...`);
+            let sourceCount = 0;
             
-            // Try generic card capture: divs containing images and links
-            console.log(`\nStratégie de fallback: capture par position`);
-            const allDivs = $('div[class]');
-            const potentialCards = [];
-            
-            allDivs.each((i, el) => {
-                const $el = $(el);
-                const hasImg = $el.find('img').length > 0;
-                const hasLink = $el.find('a').length > 0;
-                const childCount = $el.children().length;
-                
-                // Card-like element: has image, link, and reasonable children count
-                if (hasImg && hasLink && childCount > 2 && childCount < 20) {
-                    potentialCards.push({
-                        index: i,
-                        class: $el.attr('class'),
-                        children: childCount,
-                        images: $el.find('img').length,
-                        links: $el.find('a').length
-                    });
-                }
-            });
-            
-            console.log(`Trouvé ${potentialCards.length} éléments potentiellement des cartes`);
-            potentialCards.slice(0, 5).forEach((card, idx) => {
-                console.log(`  Card ${idx}: class="${card.class}" - ${card.children} children, ${card.images} images, ${card.links} links`);
-            });
-            
-            // Now attempt capture using image-based detection
-            console.log(`\n📸 Tentative de capture par images...`);
-            const allImages = $('img');
-            const capturedTexts = new Set();
-            let captured = 0;
-            
-            for (let i = 0; i < Math.min(allImages.length, 20); i++) {
-                const $img = $(allImages[i]);
-                
-                // Get image dimensions to filter out small icons
-                const src = $img.attr('src');
-                const alt = $img.attr('alt') || '';
-                const parent = $img.parent();
-                const parentClass = parent.attr('class') || '';
-                
-                if (!src) continue;
-                
-                // Try to get the clickable parent (link or button)
-                let clickable = parent;
-                if (!clickable.is('a, button, [role="button"]')) {
-                    clickable = $img.closest('a, button, [role="button"], [onclick], div.col-md-6, [class*="card"], [class*="item"]');
-                }
-                
-                if (!clickable || clickable.length === 0) continue;
-                
-                // Get text for dedup
-                const text = clickable.text().trim().substring(0, 100);
-                
-                if (text && capturedTexts.has(text)) {
-                    console.log(`  ⊘ Image ${i} est probable doublon (texte: ${text.substring(0, 30)}...)`);
-                    continue;
-                }
-                
-                if (text) capturedTexts.add(text);
-                
+            for (let i = 0; i < Math.min(cardElements.length, 15); i++) {
                 try {
-                    // Try to screenshot the clickable element
-                    const locator = page.locator(`text="${text.substring(0, 30)}"`).first();
-                    if (await locator.isVisible()) {
-                        await locator.scrollIntoViewIfNeeded();
-                        await page.waitForTimeout(200);
-                        await locator.screenshot({ path: `card_${count}.png` });
-                        console.log(`✓ Capture ${count} générée (${s.name} #${i}, texte: ${text.substring(0, 30)}...)`);
-                        count++;
+                    const $el = $(cardElements[i]);
+                    
+                    // Get element text for deduplication
+                    const text = $el.text().trim();
+                    const href = $el.attr('href') || '';
+                    const contentHash = `${text.substring(0, 50)}_${href}`.replace(/\s+/g, '_');
+                    
+                    // Skip if we've already captured this content
+                    if (capturedHashes.has(contentHash)) {
+                        console.log(`  ⊘ Card ${i} is a duplicate, skipping`);
+                        continue;
                     }
+                    
+                    capturedHashes.add(contentHash);
+                    
+                    // Get the clickable link (could be the element itself or a child/parent)
+                    let link = $el;
+                    if (!link.is('a')) {
+                        link = $el.find('a').first();
+                        if (link.length === 0) {
+                            link = $el.closest('a');
+                        }
+                    }
+                    
+                    if (link.length === 0) {
+                        console.log(`  ⚠ Card ${i}: No clickable link found`);
+                        continue;
+                    }
+                    
+                    const href_val = link.attr('href') || '';
+                    const cardText = link.text().trim().substring(0, 40);
+                    
+                    // Navigate to the card if it has a link, or screenshot in place
+                    if (href_val && !href_val.startsWith('#')) {
+                        try {
+                            // Navigate to card detail page
+                            const cardUrl = href_val.startsWith('http') ? href_val : new URL(href_val, s.url).href;
+                            console.log(`  → Navigating to card: ${cardUrl.substring(0, 60)}...`);
+                            
+                            await page.goto(cardUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+                            await page.waitForTimeout(1000);
+                            
+                            // Take screenshot of card detail page
+                            await page.screenshot({ path: `card_${count}.png` });
+                            console.log(`✓ Capture ${count} générée (${s.name} #${i} - ${cardText})`);
+                            count++;
+                            sourceCount++;
+                            
+                            // Return to main page
+                            await page.goto(s.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                            await page.waitForTimeout(2000);
+                            
+                        } catch (e) {
+                            console.warn(`  ⚠ Failed to navigate to card ${i}: ${e.message}`);
+                            // Go back to main page
+                            try {
+                                await page.goto(s.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                            } catch (err) {
+                                console.error(`  ❌ Failed to return to main page`);
+                                break;
+                            }
+                        }
+                    } else {
+                        // No href, try to screenshot the element in place
+                        try {
+                            // Scroll to element and take screenshot
+                            const elementLocator = page.locator(`text="${cardText}"`).first();
+                            if (await elementLocator.isVisible()) {
+                                await elementLocator.scrollIntoViewIfNeeded();
+                                await page.waitForTimeout(300);
+                                await elementLocator.screenshot({ path: `card_${count}.png` });
+                                console.log(`✓ Capture ${count} générée (${s.name} #${i} - ${cardText})`);
+                                count++;
+                                sourceCount++;
+                            }
+                        } catch (e) {
+                            console.warn(`  ⚠ Cannot screenshot element ${i}: ${e.message}`);
+                        }
+                    }
+                    
+                    // Stop if we have enough cards from this source
+                    if (sourceCount >= 10) {
+                        console.log(`  ✓ Reached 10 cards from ${s.name}, moving to next source`);
+                        break;
+                    }
+                    
                 } catch (e) {
-                    console.warn(`  ⚠ Impossible de capturer image ${i}: ${e.message}`);
+                    console.error(`  ❌ Error processing card ${i}:`, e.message);
                 }
+            }
+            
+            if (sourceCount === 0) {
+                console.log(`⚠ No cards captured from ${s.name}, saving debug info...`);
+                await page.screenshot({ path: `debug_${s.name}_failed.png` });
+                const structure = await page.evaluate(() => {
+                    return {
+                        title: document.title,
+                        images: document.querySelectorAll('img').length,
+                        links: document.querySelectorAll('a').length,
+                        divs: document.querySelectorAll('div').length
+                    };
+                });
+                console.log(`Page structure:`, JSON.stringify(structure, null, 2));
             }
             
         } catch (e) {
-            console.error(`❌ Erreur ${s.name}:`, e.message);
+            console.error(`❌ Error processing ${s.name}:`, e.message);
         } finally {
             await page.close();
         }
     }
     
     fs.writeFileSync('total.json', JSON.stringify({ count }));
-    console.log(`\n✓ Fichier total.json mis à jour: ${count} cartes`);
+    console.log(`\n✅ Fichier total.json mis à jour: ${count} cartes uniques`);
     
     await browser.close();
     console.log(`--- FIN : ${count} cartes générées ---\n`);

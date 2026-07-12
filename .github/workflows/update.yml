@@ -14,7 +14,7 @@ jobs:
         with: { node-version: '20' }
       - run: npm install playwright cheerio axios
       - run: npx playwright install chromium --with-deps
-      - run: rm -f *.png total.json
+      git add *.png total.json debug_*.html debug_*.png || true
       - run: node capture.js
       - run: |
           git config user.name "bot"

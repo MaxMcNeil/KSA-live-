@@ -13,21 +13,18 @@ async function main() {
         { 
             url: 'https://www.spa.gov.sa/media?page=1&type=3', 
             selectors: [
-                // SPA specific - looking for the rounded card containers
-                '.media-item',
-                '[class*="media-item"]',
-                '.infografic-item',
-                '[class*="infografic"]',
-                '.gallery-item',
-                '[class*="gallery-item"]',
-                '.col-md-6',
-                '[class*="col-"]',
-                'div[class*="col"]',
+                // Look for the outer container (rounded boxes with images)
+                'a[class*="media"]',
                 'a[class*="col"]',
-                '.card',
-                '[class*="card"]',
-                '[class*="article"]',
-                'article'
+                'div[class*="media-item"]',
+                'div[class*="media"]',
+                '[class*="media-item"]',
+                '[class*="col-md"]',
+                '.col-md-6',
+                'a.col-md-6',
+                'div.col-md-6',
+                '[class*="gallery"]',
+                '[class*="infografic"]'
             ],
             name: 'SPA' 
         },
@@ -81,10 +78,26 @@ async function main() {
             // Capture up to 10 elements - capture full card with all content
             for (let i = 0; i < Math.min(elements.length, 10); i++) {
                 try {
+                    // Scroll element into view to ensure images are loaded
+                    await elements[i].scrollIntoViewIfNeeded();
+                    await page.waitForTimeout(500);
+                    
                     // Get the bounding box to ensure we capture the entire element
                     const box = await elements[i].boundingBox();
                     if (box) {
-                        console.log(`  Card ${i}: ${box.width}x${box.height}px`);
+                        console.log(`  Card ${i}: ${box.width}x${box.height}px at (${box.x}, ${box.y})`);
+                        
+                        // Only capture if card is reasonably sized (not just text)
+                        if (box.width < 100 || box.height < 100) {
+                            console.warn(`  ⚠ Card ${i} trop petit (${box.width}x${box.height}), essai du parent...`);
+                            // Try to get parent element
+                            const parent = await elements[i].evaluate(el => el.parentElement);
+                            if (parent) {
+                                // Can't directly screenshot parent via locator, skip this approach
+                                console.warn(`  Skipping small element`);
+                                continue;
+                            }
+                        }
                     }
                     
                     await elements[i].screenshot({ path: `card_${count}.png` });

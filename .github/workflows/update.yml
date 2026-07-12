@@ -1,42 +1,25 @@
 name: Capture News
-
 on:
   schedule:
     - cron: '0 */2 * * *'
   workflow_dispatch:
-
 jobs:
   capture:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install dependencies
-        run: |
-          npm install
-          npx playwright install chromium --with-deps
-
-      - name: Clean old files
-        run: rm -f *.png total.json
-
-      - name: Run capture script
-        run: node capture.js
-
-      - name: Commit and push changes
-        run: |
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with: { node-version: '18' }
+      - run: npm install playwright cheerio axios
+      - run: npx playwright install chromium --with-deps
+      - run: rm -f *.png total.json
+      - run: node capture.js
+      - run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          # Ajoute tous les fichiers PNG et le JSON de configuration
           git add *.png total.json
-          # Commit seulement s'il y a des changements
-          git commit -m "Update news cards" || echo "No changes to commit"
+          git commit -m "Update cards" || echo "No changes"
           git push
           

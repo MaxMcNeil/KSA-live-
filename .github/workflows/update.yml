@@ -19,6 +19,6 @@ jobs:
       - run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
-          git add *.png total.json debug_*.html debug_*.png || true
+          git add -A
           git commit -m "Update cards" || echo "No changes"
           git push

@@ -81,10 +81,17 @@ async function saveTrimmedScreenshot(el, outPath) {
             .trim({ background: '#ffffff', threshold: 12 })
             .toFile(outPath);
     } catch (e) {
-        // If trim fails for any reason (e.g. fully uniform image), fall back to the raw screenshot
         console.warn(`  ⚠ trim failed for ${outPath}, saving untrimmed: ${e.message}`);
         fs.writeFileSync(outPath, buffer);
     }
+}
+
+// Force a cache bypass on every request: no-cache headers plus a random
+// cache-busting query param, so a CDN/ISR layer in front of the source
+// site can't hand us a stale cached page.
+function cacheBustedUrl(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}_cb=${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 async function main() {
@@ -100,9 +107,15 @@ async function main() {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         });
 
+        await page.setExtraHTTPHeaders({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+        });
+
         try {
-            console.log(`\n📰 ${source.name}: ${source.url}`);
-            await page.goto(source.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            const freshUrl = cacheBustedUrl(source.url);
+            console.log(`\n📰 ${source.name}: ${freshUrl}`);
+            await page.goto(freshUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(2000);
 
             console.log(`  ⬇ scrolling to trigger lazy-loaded content...`);

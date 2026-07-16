@@ -1,59 +1,109 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
     <style>
         html, body {
             margin: 0;
             height: 100vh;
             width: 100vw;
             overflow: hidden;
-            background: radial-gradient(ellipse at center, #3a0000 0%, #1a0000 55%, #000000 100%);
+            background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
             background-size: 200% 200%;
             animation: pulseBg 6s ease-in-out infinite;
+            font-family: 'Cairo', sans-serif;
         }
 
         @keyframes pulseBg {
-            0%   { background-position: 50% 50%; filter: brightness(1); }
-            50%  { background-position: 50% 50%; filter: brightness(1.25); }
-            100% { background-position: 50% 50%; filter: brightness(1); }
+            0%   { filter: brightness(1); }
+            50%  { filter: brightness(1.35); }
+            100% { filter: brightness(1); }
         }
 
-        /* subtle alert-style accents so it reads as "breaking news" without fighting with the card */
+        /* animated marquee-style alert stripes down each side */
         body::before, body::after {
             content: "";
             position: fixed;
             top: 0;
             bottom: 0;
-            width: 14px;
+            width: 20px;
             background: repeating-linear-gradient(
                 45deg,
-                #c40000 0px, #c40000 18px,
-                #1a0000 18px, #1a0000 36px
+                #e40000 0px, #e40000 18px,
+                #150000 18px, #150000 36px
             );
-            opacity: 0.85;
+            background-size: 200% 200%;
+            opacity: 0.95;
             z-index: 1;
+            animation: stripesMove 1s linear infinite;
         }
         body::before { left: 0; }
         body::after  { right: 0; }
 
-        .card {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            max-width: 88vw;
-            max-height: 88vh;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-            box-shadow: 0 0 60px rgba(0, 0, 0, 0.75);
-            border-radius: 10px;
-            transition: opacity 1s, transform 1s;
-            backface-visibility: hidden;
-            z-index: 2;
+        @keyframes stripesMove {
+            from { background-position: 0 0; }
+            to   { background-position: 0 51px; }
         }
 
+        #header {
+            position: fixed;
+            top: 26px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 3;
+            text-align: center;
+            pointer-events: none;
+        }
+        #header .title {
+            font-size: 2.6rem;
+            font-weight: 900;
+            color: #ff3b3b;
+            text-shadow: 0 0 14px rgba(255,0,0,0.9), 0 0 34px rgba(255,0,0,0.55);
+            letter-spacing: 1px;
+        }
+        #header .status {
+            margin-top: 8px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #ffdede;
+            text-shadow: 0 0 8px rgba(0,0,0,0.8);
+        }
+        .dots span {
+            display: inline-block;
+            animation: blinkDot 1.4s infinite;
+            opacity: 0;
+        }
+        .dots span:nth-child(2) { animation-delay: 0.2s; }
+        .dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blinkDot {
+            0%   { opacity: 0; }
+            50%  { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        /* fixed-size frame the image scales to fill (up or down) without distortion or overflow */
+        .card-frame {
+            position: fixed;
+            top: 52%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 82vw;
+            height: 78vh;
+            max-width: 1100px;
+            max-height: 820px;
+            transition: opacity 1s;
+            z-index: 2;
+        }
+        .card-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 10px;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+        }
         .fold {
             opacity: 0;
             pointer-events: none;
@@ -61,6 +111,12 @@
     </style>
 </head>
 <body>
+    <div id="header">
+        <div class="title">برقيات حينية</div>
+        <div class="status" id="status">
+            جاري التحميل<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+    </div>
     <div id="stage"></div>
     <script>
         const CYCLE_MS = 7000;             // how often the slideshow flips cards
@@ -69,20 +125,53 @@
         let count = 0;
         let cur = 0;
         let cycleTimer = null;
+        let audioCtx = null;
+
+        function setStatusLoading() {
+            document.getElementById('status').innerHTML =
+                'جاري التحميل<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+        }
+
+        function setStatusLive(n) {
+            document.getElementById('status').textContent = `🔴 مباشر — ${n} بطاقة إخبارية`;
+        }
+
+        function playBeep() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.2);
+            } catch (e) {
+                console.warn('Beep failed (audio may be blocked):', e.message);
+            }
+        }
 
         function buildStage(newCount) {
             const stage = document.getElementById('stage');
             stage.innerHTML = '';
             const ts = Date.now();
             for (let i = 0; i < newCount; i++) {
+                const frame = document.createElement('div');
+                frame.className = i === 0 ? 'card-frame' : 'card-frame fold';
+                frame.id = `c${i}`;
                 const img = document.createElement('img');
                 img.src = `card_${i}.png?t=${ts}`;
-                img.className = i === 0 ? 'card' : 'card fold';
-                img.id = `c${i}`;
-                stage.appendChild(img);
+                frame.appendChild(img);
+                stage.appendChild(frame);
             }
             count = newCount;
             cur = 0;
+            setStatusLive(count);
         }
 
         function startCycle() {
@@ -94,6 +183,7 @@
                 cur = (cur + 1) % count;
                 const nextEl = document.getElementById(`c${cur}`);
                 if (nextEl) nextEl.classList.remove('fold');
+                playBeep();
             }, CYCLE_MS);
         }
 
@@ -111,6 +201,7 @@
         }
 
         async function init() {
+            setStatusLoading();
             await checkForUpdates();
             startCycle();
             // Re-check periodically so a long-running OBS browser source

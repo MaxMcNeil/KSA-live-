@@ -2,7 +2,24 @@ const { chromium } = require('playwright');
 const sharp = require('sharp');
 const fs = require('fs');
 
+// Capture order == display order (cards are numbered sequentially as they're
+// found), so this array order controls what plays first on the live view.
 const sources = [
+    {
+        name: 'AlMarsd',
+        url: 'https://al-marsd.com/',
+        // No confirmed selector yet -> rely on auto-detection below.
+        // Cards here are large, full-width vertical article blocks (title + image + stats),
+        // quite different in shape from the small grid tiles on the other sources.
+        explicitSelector: null,
+        sizeWindow: { minWidth: 250, maxWidth: 1000, minHeight: 300, maxHeight: 900 }
+    },
+    {
+        name: 'Akhbaar24',
+        url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB',
+        explicitSelector: null,
+        sizeWindow: { minWidth: 200, maxWidth: 480, minHeight: 220, maxHeight: 620 }
+    },
     {
         name: 'SPA',
         url: 'https://www.spa.gov.sa/media?page=1&type=3',
@@ -10,13 +27,6 @@ const sources = [
         // framework classes (not the random hashed muirtl-xxxx ones), so this is safe to hardcode.
         explicitSelector: '.MuiGrid-item.MuiGrid-grid-md-3.MuiGrid-grid-lg-3',
         sizeWindow: { minWidth: 180, maxWidth: 420, minHeight: 220, maxHeight: 550 }
-    },
-    {
-        name: 'Akhbaar24',
-        url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB',
-        // No confirmed selector yet -> rely on auto-detection below.
-        explicitSelector: null,
-        sizeWindow: { minWidth: 200, maxWidth: 480, minHeight: 220, maxHeight: 620 }
     }
 ];
 

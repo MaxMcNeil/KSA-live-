@@ -12,7 +12,6 @@
             width: 100vw;
             overflow: hidden;
             background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
-            background-size: 200% 200%;
             animation: pulseBg 6s ease-in-out infinite;
             font-family: 'Cairo', sans-serif;
         }
@@ -35,7 +34,6 @@
                 #e40000 0px, #e40000 18px,
                 #150000 18px, #150000 36px
             );
-            background-size: 200% 200%;
             opacity: 0.95;
             z-index: 1;
             animation: stripesMove 1s linear infinite;
@@ -53,7 +51,7 @@
             top: 26px;
             left: 50%;
             transform: translateX(-50%);
-            z-index: 3;
+            z-index: 5;
             text-align: center;
             pointer-events: none;
         }
@@ -70,6 +68,10 @@
             font-weight: 700;
             color: #ffdede;
             text-shadow: 0 0 8px rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         .dots span {
             display: inline-block;
@@ -84,29 +86,85 @@
             100% { opacity: 0; }
         }
 
-        /* fixed-size frame the image scales to fill (up or down) without distortion or overflow */
-        .card-frame {
+        /* animated broadcast "LIVE" dot with pulsing ring */
+        .live-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #ff1414;
+            box-shadow: 0 0 0 0 rgba(255, 20, 20, 0.7);
+            animation: liveRing 1.4s infinite;
+        }
+        @keyframes liveRing {
+            0%   { box-shadow: 0 0 0 0 rgba(255, 20, 20, 0.7); }
+            70%  { box-shadow: 0 0 0 14px rgba(255, 20, 20, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 20, 20, 0); }
+        }
+
+        /* --- page-turn stage --- */
+        #stage {
             position: fixed;
+            inset: 0;
+            z-index: 2;
+            perspective: 2200px;
+        }
+
+        /* positioning wrapper: centers + sizes the slot, never animates itself */
+        .card-slot {
+            position: absolute;
             top: 52%;
             left: 50%;
-            transform: translate(-50%, -50%);
             width: 82vw;
             height: 78vh;
             max-width: 1100px;
             max-height: 820px;
-            transition: opacity 1s;
-            z-index: 2;
+            transform: translate(-50%, -50%);
         }
-        .card-frame img {
+
+        /* the actual "page" that flips */
+        .page {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transform-origin: right center;
+            transform: rotateY(0deg);
+            transition: transform 1s cubic-bezier(.45,.05,.55,.95), opacity .5s ease-in .5s;
+            backface-visibility: hidden;
+        }
+        .page.notransition { transition: none !important; }
+
+        .page img {
+            display: block;
             width: 100%;
             height: 100%;
             object-fit: contain;
             border-radius: 10px;
             box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
         }
-        .fold {
+
+        /* glossy light-sweep overlay shown only while a page is turning */
+        .page .sheen {
+            position: absolute;
+            inset: 0;
+            border-radius: 10px;
+            background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
             opacity: 0;
             pointer-events: none;
+        }
+        .page.folding .sheen {
+            opacity: 1;
+            animation: sheenSweep 1s ease-in-out;
+        }
+        @keyframes sheenSweep {
+            from { transform: translateX(-100%); }
+            to   { transform: translateX(100%); }
+        }
+
+        .page.folding {
+            transform: rotateY(-150deg);
+            opacity: 0;
         }
     </style>
 </head>
@@ -119,7 +177,8 @@
     </div>
     <div id="stage"></div>
     <script>
-        const CYCLE_MS = 7000;             // how often the slideshow flips cards
+        const CYCLE_MS = 15000;            // how long each card stays on screen
+        const FOLD_MS = 1000;              // must match the CSS transition duration
         const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
 
         let count = 0;
@@ -133,27 +192,57 @@
         }
 
         function setStatusLive(n) {
-            document.getElementById('status').textContent = `🔴 مباشر — ${n} بطاقة إخبارية`;
+            document.getElementById('status').innerHTML =
+                `<span class="live-dot"></span> مباشر — ${n} بطاقة إخبارية`;
         }
 
-        function playBeep() {
+        function playChime() {
             try {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') audioCtx.resume();
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = 880;
-                gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.15, audioCtx.currentTime + 0.02);
-                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.2);
+                const now = audioCtx.currentTime;
+                const notes = [
+                    { freq: 880, start: 0,    dur: 0.14 },
+                    { freq: 1320, start: 0.12, dur: 0.16 }
+                ];
+                notes.forEach(n => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = n.freq;
+                    gain.gain.setValueAtTime(0.0001, now + n.start);
+                    gain.gain.exponentialRampToValueAtTime(0.16, now + n.start + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + n.start);
+                    osc.stop(now + n.start + n.dur + 0.02);
+                });
             } catch (e) {
-                console.warn('Beep failed (audio may be blocked):', e.message);
+                console.warn('Chime failed (audio may be blocked):', e.message);
             }
+        }
+
+        function makeSlot(i, ts, zIndex, rotated) {
+            const slot = document.createElement('div');
+            slot.className = 'card-slot';
+            slot.id = `slot${i}`;
+            slot.style.zIndex = zIndex;
+
+            const page = document.createElement('div');
+            page.className = 'page';
+            page.id = `page${i}`;
+
+            const img = document.createElement('img');
+            img.src = `card_${i}.png?t=${ts}`;
+
+            const sheen = document.createElement('div');
+            sheen.className = 'sheen';
+
+            page.appendChild(img);
+            page.appendChild(sheen);
+            slot.appendChild(page);
+            return slot;
         }
 
         function buildStage(newCount) {
@@ -161,30 +250,51 @@
             stage.innerHTML = '';
             const ts = Date.now();
             for (let i = 0; i < newCount; i++) {
-                const frame = document.createElement('div');
-                frame.className = i === 0 ? 'card-frame' : 'card-frame fold';
-                frame.id = `c${i}`;
-                const img = document.createElement('img');
-                img.src = `card_${i}.png?t=${ts}`;
-                frame.appendChild(img);
-                stage.appendChild(frame);
+                // card 0 starts on top (front), card 1 sits just behind it
+                // ready to be revealed by the first page-turn; everything
+                // else is stacked further back, hidden underneath.
+                const z = i === 0 ? newCount + 2 : (i === 1 ? newCount + 1 : newCount - i);
+                stage.appendChild(makeSlot(i, ts, z, false));
             }
             count = newCount;
             cur = 0;
             setStatusLive(count);
         }
 
+        function turnPage() {
+            if (count === 0) return;
+            const next = (cur + 1) % count;
+
+            const curPage = document.getElementById(`page${cur}`);
+            const nextSlot = document.getElementById(`slot${next}`);
+
+            if (!curPage || !nextSlot) return;
+
+            // bring "next" just behind "current" so the turn reveals it
+            nextSlot.style.zIndex = count + 1;
+
+            curPage.classList.add('folding');
+            playChime();
+
+            setTimeout(() => {
+                // reset the just-folded page instantly (no transition) and
+                // drop it to the back of the stack for a future turn
+                curPage.classList.add('notransition');
+                curPage.classList.remove('folding');
+                // force reflow so the notransition class takes effect before we change transform back
+                void curPage.offsetWidth;
+                curPage.classList.remove('notransition');
+
+                document.getElementById(`slot${cur}`).style.zIndex = 1;
+                nextSlot.style.zIndex = count + 2;
+
+                cur = next;
+            }, FOLD_MS);
+        }
+
         function startCycle() {
             if (cycleTimer) clearInterval(cycleTimer);
-            cycleTimer = setInterval(() => {
-                if (count === 0) return;
-                const curEl = document.getElementById(`c${cur}`);
-                if (curEl) curEl.classList.add('fold');
-                cur = (cur + 1) % count;
-                const nextEl = document.getElementById(`c${cur}`);
-                if (nextEl) nextEl.classList.remove('fold');
-                playBeep();
-            }, CYCLE_MS);
+            cycleTimer = setInterval(turnPage, CYCLE_MS);
         }
 
         async function checkForUpdates() {
@@ -204,8 +314,6 @@
             setStatusLoading();
             await checkForUpdates();
             startCycle();
-            // Re-check periodically so a long-running OBS browser source
-            // picks up new captures without ever needing a manual reload.
             setInterval(checkForUpdates, REFRESH_MS);
         }
 

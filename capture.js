@@ -8,9 +8,6 @@ const sources = [
     {
         name: 'AlMarsd',
         url: 'https://al-marsd.com/',
-        // No confirmed selector yet -> rely on auto-detection below.
-        // Cards here are large, full-width vertical article blocks (title + image + stats),
-        // quite different in shape from the small grid tiles on the other sources.
         explicitSelector: null,
         sizeWindow: { minWidth: 250, maxWidth: 1000, minHeight: 300, maxHeight: 900 }
     },
@@ -30,6 +27,28 @@ const sources = [
     }
 ];
 
+// Removes floating ads / popups / cookie banners / sticky headers before we
+// screenshot anything. These are almost always position:fixed or
+// position:sticky, which is exactly what makes them "bleed" into whichever
+// card happens to be underneath them on screen. Real article cards are
+// normally in-flow (static/relative), so this is safe and won't touch them.
+async function hideOverlaysAndAds(page) {
+    await page.evaluate(() => {
+        document.querySelectorAll('body *').forEach(el => {
+            const cs = getComputedStyle(el);
+            if ((cs.position === 'fixed' || cs.position === 'sticky') &&
+                el.offsetWidth > 0 && el.offsetHeight > 0) {
+                el.style.setProperty('display', 'none', 'important');
+            }
+        });
+        // common ad/consent/popup container patterns as a belt-and-braces extra pass
+        document.querySelectorAll(
+            'iframe[id*="google_ads"], iframe[id*="ad_"], [id*="ad-"], ' +
+            '[class*="popup"], [class*="cookie"], [class*="consent"], [class*="modal"]'
+        ).forEach(el => el.style.setProperty('display', 'none', 'important'));
+    });
+}
+
 // Scroll down repeatedly so lazy/infinite-scroll content has a chance to load
 // before we try to find cards. Harmless for sites that don't need it.
 async function scrollToLoadMore(page, steps = 6, pauseMs = 900) {
@@ -37,7 +56,6 @@ async function scrollToLoadMore(page, steps = 6, pauseMs = 900) {
         await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.9));
         await page.waitForTimeout(pauseMs);
     }
-    // scroll back to top so bounding boxes / screenshots are stable
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(500);
 }
@@ -51,7 +69,7 @@ async function autoDetectCards(page, sizeWindow) {
 
         const imgs = Array.from(document.querySelectorAll('img')).filter(img => {
             const r = img.getBoundingClientRect();
-            return r.width > 40 && r.height > 40; // skip tiny icons/logos
+            return r.width > 40 && r.height > 40;
         });
 
         const sigToEls = new Map();
@@ -81,9 +99,6 @@ async function autoDetectCards(page, sizeWindow) {
     }, sizeWindow);
 }
 
-// Take the element screenshot into memory, then trim any solid white
-// border/padding off the edges before writing to disk. Works regardless
-// of the card's actual size or which site it came from.
 async function saveTrimmedScreenshot(el, outPath) {
     const buffer = await el.screenshot();
     try {
@@ -96,12 +111,27 @@ async function saveTrimmedScreenshot(el, outPath) {
     }
 }
 
-// Force a cache bypass on every request: no-cache headers plus a random
-// cache-busting query param, so a CDN/ISR layer in front of the source
-// site can't hand us a stale cached page.
 function cacheBustedUrl(url) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}_cb=${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+// Builds a dedup key from BOTH the visible text and the card's first image
+// URL. Two DOM wrappers around the same underlying article will almost
+// always share the same image src even if surrounding whitespace/text
+// differs slightly, so this catches near-duplicates the old text-only hash missed.
+async function dedupKey(el) {
+    const text = (await el.textContent() || '').trim();
+    const textPart = text.substring(0, 100).replace(/\s+/g, '_');
+    let imgPart = '';
+    try {
+        const img = await el.$('img');
+        if (img) {
+            const src = await img.getAttribute('src');
+            if (src) imgPart = src.split('?')[0];
+        }
+    } catch (e) { /* ignore */ }
+    return `${textPart}|${imgPart}`;
 }
 
 async function main() {
@@ -131,8 +161,13 @@ async function main() {
             await page.goto(freshUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
             await page.waitForTimeout(2000);
 
+            await hideOverlaysAndAds(page);
+
             console.log(`  ⬇ scrolling to trigger lazy-loaded content...`);
             await scrollToLoadMore(page);
+
+            // some ads/popups animate in after scroll/delay -> sweep again
+            await hideOverlaysAndAds(page);
 
             let elements = [];
 
@@ -173,13 +208,12 @@ async function main() {
                     await el.scrollIntoViewIfNeeded();
                     await page.waitForTimeout(300);
 
-                    const text = (await el.textContent() || '').trim();
-                    const contentHash = text.substring(0, 100).replace(/\s+/g, '_');
-                    if (capturedHashes.has(contentHash)) {
+                    const key = await dedupKey(el);
+                    if (capturedHashes.has(key)) {
                         console.log(`  ⊘ Card ${i}: duplicate, skipped`);
                         continue;
                     }
-                    capturedHashes.add(contentHash);
+                    capturedHashes.add(key);
 
                     await saveTrimmedScreenshot(el, `card_${count}.png`);
                     console.log(`✓ Card ${count} captured (${source.name} #${i})`);
@@ -208,9 +242,6 @@ async function main() {
 
     await browser.close();
 
-    // Fail loudly: if nothing at all was captured, exit non-zero so the
-    // GitHub Actions run shows as FAILED (and can email/notify you),
-    // instead of silently "succeeding" while leaving stale cards live.
     if (count === 0) {
         console.error("❌❌❌ AUCUNE CARTE CAPTURÉE — échec du job pour alerter.");
         process.exit(1);

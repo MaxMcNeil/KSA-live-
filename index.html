@@ -11,28 +11,61 @@
 <body>
     <div id="stage"></div>
     <script>
-        async function init() {
+        const CYCLE_MS = 7000;             // how often the slideshow flips cards
+        const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
+
+        let count = 0;
+        let cur = 0;
+        let cycleTimer = null;
+
+        function buildStage(newCount) {
+            const stage = document.getElementById('stage');
+            stage.innerHTML = '';
+            const ts = Date.now();
+            for (let i = 0; i < newCount; i++) {
+                const img = document.createElement('img');
+                img.src = `card_${i}.png?t=${ts}`;
+                img.className = i === 0 ? 'card' : 'card fold';
+                img.id = `c${i}`;
+                stage.appendChild(img);
+            }
+            count = newCount;
+            cur = 0;
+        }
+
+        function startCycle() {
+            if (cycleTimer) clearInterval(cycleTimer);
+            cycleTimer = setInterval(() => {
+                if (count === 0) return;
+                const curEl = document.getElementById(`c${cur}`);
+                if (curEl) curEl.classList.add('fold');
+                cur = (cur + 1) % count;
+                const nextEl = document.getElementById(`c${cur}`);
+                if (nextEl) nextEl.classList.remove('fold');
+            }, CYCLE_MS);
+        }
+
+        async function checkForUpdates() {
             try {
                 const res = await fetch('total.json?t=' + Date.now());
-                const { count } = await res.json();
-                const stage = document.getElementById('stage');
-                
-                for(let i = 0; i < count; i++) {
-                    const img = document.createElement('img');
-                    img.src = `card_${i}.png?t=${Date.now()}`;
-                    img.className = i === 0 ? 'card' : 'card fold';
-                    img.id = `c${i}`;
-                    stage.appendChild(img);
+                const data = await res.json();
+                if (data.count && data.count !== count) {
+                    console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
+                    buildStage(data.count);
                 }
-
-                let cur = 0;
-                setInterval(() => {
-                    document.getElementById(`c${cur}`).classList.add('fold');
-                    cur = (cur + 1) % count;
-                    document.getElementById(`c${cur}`).classList.remove('fold');
-                }, 7000);
-            } catch(e) { console.error("En attente des données..."); }
+            } catch (e) {
+                console.error("En attente des données...", e);
+            }
         }
+
+        async function init() {
+            await checkForUpdates();
+            startCycle();
+            // Re-check periodically so a long-running OBS browser source
+            // picks up new captures without ever needing a manual reload.
+            setInterval(checkForUpdates, REFRESH_MS);
+        }
+
         init();
     </script>
 </body>

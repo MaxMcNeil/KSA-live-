@@ -99,6 +99,7 @@ async function main() {
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
 
     let count = 0;
+    const perSourceCounts = {};
     const capturedHashes = new Set();
 
     for (const source of sources) {
@@ -111,6 +112,8 @@ async function main() {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache'
         });
+
+        perSourceCounts[source.name] = 0;
 
         try {
             const freshUrl = cacheBustedUrl(source.url);
@@ -178,6 +181,7 @@ async function main() {
                 }
             }
 
+            perSourceCounts[source.name] = cardsCaptured;
             console.log(`\n✓ ${source.name}: ${cardsCaptured} cards captured\n`);
 
         } catch (e) {
@@ -189,9 +193,18 @@ async function main() {
 
     fs.writeFileSync('total.json', JSON.stringify({ count }));
     console.log(`\n✅ Total: ${count} unique cards captured`);
+    console.log(`   Détail: ${JSON.stringify(perSourceCounts)}`);
     console.log(`--- FIN ---\n`);
 
     await browser.close();
+
+    // Fail loudly: if nothing at all was captured, exit non-zero so the
+    // GitHub Actions run shows as FAILED (and can email/notify you),
+    // instead of silently "succeeding" while leaving stale cards live.
+    if (count === 0) {
+        console.error("❌❌❌ AUCUNE CARTE CAPTURÉE — échec du job pour alerter.");
+        process.exit(1);
+    }
 }
 
 main().catch(err => {

@@ -3,9 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        body { margin: 0; background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        .card { width: 800px; height: 600px; position: absolute; transition: opacity 1s, transform 1s; backface-visibility: hidden; }
-        .fold { opacity: 0; pointer-events: none; }
+        html, body {
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background: radial-gradient(ellipse at center, #3a0000 0%, #1a0000 55%, #000000 100%);
+            background-size: 200% 200%;
+            animation: pulseBg 6s ease-in-out infinite;
+        }
+
+        @keyframes pulseBg {
+            0%   { background-position: 50% 50%; filter: brightness(1); }
+            50%  { background-position: 50% 50%; filter: brightness(1.25); }
+            100% { background-position: 50% 50%; filter: brightness(1); }
+        }
+
+        /* subtle alert-style accents so it reads as "breaking news" without fighting with the card */
+        body::before, body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            width: 14px;
+            background: repeating-linear-gradient(
+                45deg,
+                #c40000 0px, #c40000 18px,
+                #1a0000 18px, #1a0000 36px
+            );
+            opacity: 0.85;
+            z-index: 1;
+        }
+        body::before { left: 0; }
+        body::after  { right: 0; }
+
+        .card {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 88vw;
+            max-height: 88vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.75);
+            border-radius: 10px;
+            transition: opacity 1s, transform 1s;
+            backface-visibility: hidden;
+            z-index: 2;
+        }
+
+        .fold {
+            opacity: 0;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>

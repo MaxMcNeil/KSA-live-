@@ -15,19 +15,12 @@
             font-family: 'Cairo', sans-serif;
         }
 
-        /* isolated background layer: only THIS pulses, nothing else inherits it */
+        /* static background layer — no animation, so it cannot be a flicker source */
         #bg {
             position: fixed;
             inset: 0;
             z-index: 0;
             background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
-            animation: pulseBg 6s ease-in-out infinite;
-        }
-
-        @keyframes pulseBg {
-            0%   { filter: brightness(1); }
-            50%  { filter: brightness(1.35); }
-            100% { filter: brightness(1); }
         }
 
         /* animated marquee-style alert stripes down each side */
@@ -81,33 +74,14 @@
             justify-content: center;
             gap: 8px;
         }
-        .dots span {
-            display: inline-block;
-            animation: blinkDot 1.4s infinite;
-            opacity: 0;
-        }
-        .dots span:nth-child(2) { animation-delay: 0.2s; }
-        .dots span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes blinkDot {
-            0%   { opacity: 0; }
-            50%  { opacity: 1; }
-            100% { opacity: 0; }
-        }
 
-        /* animated broadcast "LIVE" dot with pulsing ring */
+        /* static broadcast dot — no animation, just a solid red circle */
         .live-dot {
             display: inline-block;
             width: 14px;
             height: 14px;
             border-radius: 50%;
             background: #ff1414;
-            box-shadow: 0 0 0 0 rgba(255, 20, 20, 0.7);
-            animation: liveRing 1.4s infinite;
-        }
-        @keyframes liveRing {
-            0%   { box-shadow: 0 0 0 0 rgba(255, 20, 20, 0.7); }
-            70%  { box-shadow: 0 0 0 14px rgba(255, 20, 20, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 20, 20, 0); }
         }
 
         /* --- page-turn stage --- */
@@ -181,7 +155,7 @@
     <div id="header">
         <div class="title">برقيات حينية</div>
         <div class="status" id="status">
-            جاري التحميل<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+            جاري التحميل...
         </div>
     </div>
     <div id="stage"></div>
@@ -196,8 +170,7 @@
         let audioCtx = null;
 
         function setStatusLoading() {
-            document.getElementById('status').innerHTML =
-                'جاري التحميل<span class="dots"><span>.</span><span>.</span><span>.</span></span>';
+            document.getElementById('status').textContent = 'جاري التحميل...';
         }
 
         function setStatusLive(n) {
@@ -293,43 +266,6 @@
                 // force reflow so the notransition class takes effect before we change transform back
                 void curPage.offsetWidth;
                 curPage.classList.remove('notransition');
-
-                document.getElementById(`slot${cur}`).style.zIndex = 1;
-                nextSlot.style.zIndex = count + 2;
-
-                cur = next;
-            }, FOLD_MS);
-        }
-
-        function startCycle() {
-            if (cycleTimer) clearInterval(cycleTimer);
-            cycleTimer = setInterval(turnPage, CYCLE_MS);
-        }
-
-        async function checkForUpdates() {
-            try {
-                const res = await fetch('total.json?t=' + Date.now());
-                const data = await res.json();
-                if (data.count && data.count !== count) {
-                    console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
-                    buildStage(data.count);
-                }
-            } catch (e) {
-                console.error("En attente des données...", e);
-            }
-        }
-
-        async function init() {
-            setStatusLoading();
-            await checkForUpdates();
-            startCycle();
-            setInterval(checkForUpdates, REFRESH_MS);
-        }
-
-        init();
-    </script>
-</body>
-</html>;
 
                 document.getElementById(`slot${cur}`).style.zIndex = 1;
                 nextSlot.style.zIndex = count + 2;

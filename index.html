@@ -15,7 +15,7 @@
             font-family: 'Cairo', sans-serif;
         }
 
-        /* static background layer — no animation, so it cannot be a flicker source */
+        /* static background layer — no animation */
         #bg {
             position: fixed;
             inset: 0;
@@ -75,7 +75,6 @@
             gap: 8px;
         }
 
-        /* static broadcast dot — no animation, just a solid red circle */
         .live-dot {
             display: inline-block;
             width: 14px;
@@ -84,7 +83,7 @@
             background: #ff1414;
         }
 
-        /* --- page-turn stage --- */
+        /* --- page-turn stage: exactly TWO slots exist, ever --- */
         #stage {
             position: fixed;
             inset: 0;
@@ -92,7 +91,6 @@
             perspective: 2200px;
         }
 
-        /* positioning wrapper: centers + sizes the slot, never animates itself */
         .card-slot {
             position: absolute;
             top: 52%;
@@ -104,7 +102,6 @@
             transform: translate(-50%, -50%);
         }
 
-        /* the actual "page" that flips */
         .page {
             position: relative;
             width: 100%;
@@ -126,7 +123,6 @@
             box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
         }
 
-        /* glossy light-sweep overlay shown only while a page is turning */
         .page .sheen {
             position: absolute;
             inset: 0;
@@ -154,20 +150,38 @@
     <div id="bg"></div>
     <div id="header">
         <div class="title">برقيات حينية</div>
-        <div class="status" id="status">
-            جاري التحميل...
+        <div class="status" id="status">جاري التحميل...</div>
+    </div>
+
+    <div id="stage">
+        <div class="card-slot" id="slotA">
+            <div class="page" id="pageA">
+                <img id="imgA" alt="">
+                <div class="sheen"></div>
+            </div>
+        </div>
+        <div class="card-slot" id="slotB">
+            <div class="page" id="pageB">
+                <img id="imgB" alt="">
+                <div class="sheen"></div>
+            </div>
         </div>
     </div>
-    <div id="stage"></div>
+
     <script>
         const CYCLE_MS = 10000;            // how long each card stays on screen
         const FOLD_MS = 1000;              // must match the CSS transition duration
         const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
 
         let count = 0;
-        let cur = 0;
+        let cur = 0;          // index currently shown
+        let frontIsA = true;  // which of the two slots is currently on top
         let cycleTimer = null;
         let audioCtx = null;
+
+        function urlFor(i, ts) {
+            return `card_${i}.png?t=${ts}`;
+        }
 
         function setStatusLoading() {
             document.getElementById('status').textContent = 'جاري التحميل...';
@@ -205,72 +219,57 @@
             }
         }
 
-        function makeSlot(i, ts, zIndex, rotated) {
-            const slot = document.createElement('div');
-            slot.className = 'card-slot';
-            slot.id = `slot${i}`;
-            slot.style.zIndex = zIndex;
-
-            const page = document.createElement('div');
-            page.className = 'page';
-            page.id = `page${i}`;
-
-            const img = document.createElement('img');
-            img.src = `card_${i}.png?t=${ts}`;
-
-            const sheen = document.createElement('div');
-            sheen.className = 'sheen';
-
-            page.appendChild(img);
-            page.appendChild(sheen);
-            slot.appendChild(page);
-            return slot;
-        }
-
-        function buildStage(newCount) {
-            const stage = document.getElementById('stage');
-            stage.innerHTML = '';
-            const ts = Date.now();
-            for (let i = 0; i < newCount; i++) {
-                // card 0 starts on top (front), card 1 sits just behind it
-                // ready to be revealed by the first page-turn; everything
-                // else is stacked further back, hidden underneath.
-                const z = i === 0 ? newCount + 2 : (i === 1 ? newCount + 1 : newCount - i);
-                stage.appendChild(makeSlot(i, ts, z, false));
-            }
+        // Reset (or first-time set up) the two-slot stage for a given card count.
+        function initStage(newCount) {
             count = newCount;
             cur = 0;
+            frontIsA = true;
+            const ts = Date.now();
+
+            document.getElementById('imgA').src = urlFor(0, ts);
+            document.getElementById('imgB').src = urlFor(count > 1 ? 1 : 0, ts);
+
+            const pageA = document.getElementById('pageA');
+            const pageB = document.getElementById('pageB');
+            [pageA, pageB].forEach(p => {
+                p.classList.add('notransition');
+                p.classList.remove('folding');
+            });
+            void pageA.offsetWidth;
+            [pageA, pageB].forEach(p => p.classList.remove('notransition'));
+
+            document.getElementById('slotA').style.zIndex = 3;
+            document.getElementById('slotB').style.zIndex = 2;
+
             setStatusLive(count);
         }
 
         function turnPage() {
-            if (count === 0) return;
-            const next = (cur + 1) % count;
+            if (count <= 1) return; // nothing to turn to
 
-            const curPage = document.getElementById(`page${cur}`);
-            const nextSlot = document.getElementById(`slot${next}`);
+            const frontId = frontIsA ? 'A' : 'B';
+            const backId  = frontIsA ? 'B' : 'A';
+            const frontPage = document.getElementById(`page${frontId}`);
+            const frontSlot = document.getElementById(`slot${frontId}`);
+            const backSlot  = document.getElementById(`slot${backId}`);
 
-            if (!curPage || !nextSlot) return;
-
-            // bring "next" just behind "current" so the turn reveals it
-            nextSlot.style.zIndex = count + 1;
-
-            curPage.classList.add('folding');
+            frontPage.classList.add('folding');
             playChime();
 
             setTimeout(() => {
-                // reset the just-folded page instantly (no transition) and
-                // drop it to the back of the stack for a future turn
-                curPage.classList.add('notransition');
-                curPage.classList.remove('folding');
-                // force reflow so the notransition class takes effect before we change transform back
-                void curPage.offsetWidth;
-                curPage.classList.remove('notransition');
+                frontPage.classList.add('notransition');
+                frontPage.classList.remove('folding');
+                void frontPage.offsetWidth;
+                frontPage.classList.remove('notransition');
 
-                document.getElementById(`slot${cur}`).style.zIndex = 1;
-                nextSlot.style.zIndex = count + 2;
+                frontSlot.style.zIndex = 2;
+                backSlot.style.zIndex = 3;
 
-                cur = next;
+                cur = (cur + 1) % count;
+                const nextIdx = (cur + 1) % count;
+                document.getElementById(`img${frontId}`).src = urlFor(nextIdx, Date.now());
+
+                frontIsA = !frontIsA;
             }, FOLD_MS);
         }
 
@@ -285,7 +284,7 @@
                 const data = await res.json();
                 if (data.count && data.count !== count) {
                     console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
-                    buildStage(data.count);
+                    initStage(data.count);
                 }
             } catch (e) {
                 console.error("En attente des données...", e);

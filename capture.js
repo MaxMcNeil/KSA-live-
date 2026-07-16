@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const sharp = require('sharp');
 const fs = require('fs');
 
 const sources = [
@@ -15,9 +16,21 @@ const sources = [
         url: 'https://www.akhbaar24.com/%D8%AD%D9%88%D8%A7%D8%AF%D8%AB',
         // No confirmed selector yet -> rely on auto-detection below.
         explicitSelector: null,
-        sizeWindow: { minWidth: 200, maxWidth: 480, minHeight: 220, maxHeight: 550 }
+        sizeWindow: { minWidth: 200, maxWidth: 480, minHeight: 220, maxHeight: 620 }
     }
 ];
+
+// Scroll down repeatedly so lazy/infinite-scroll content has a chance to load
+// before we try to find cards. Harmless for sites that don't need it.
+async function scrollToLoadMore(page, steps = 6, pauseMs = 900) {
+    for (let i = 0; i < steps; i++) {
+        await page.evaluate(() => window.scrollBy(0, window.innerHeight * 0.9));
+        await page.waitForTimeout(pauseMs);
+    }
+    // scroll back to top so bounding boxes / screenshots are stable
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(500);
+}
 
 // Scans the live DOM for the most common "card-sized" ancestor around images,
 // marks the winning set with a data attribute, and returns how many were found.
@@ -58,6 +71,22 @@ async function autoDetectCards(page, sizeWindow) {
     }, sizeWindow);
 }
 
+// Take the element screenshot into memory, then trim any solid white
+// border/padding off the edges before writing to disk. Works regardless
+// of the card's actual size or which site it came from.
+async function saveTrimmedScreenshot(el, outPath) {
+    const buffer = await el.screenshot();
+    try {
+        await sharp(buffer)
+            .trim({ background: '#ffffff', threshold: 12 })
+            .toFile(outPath);
+    } catch (e) {
+        // If trim fails for any reason (e.g. fully uniform image), fall back to the raw screenshot
+        console.warn(`  ⚠ trim failed for ${outPath}, saving untrimmed: ${e.message}`);
+        fs.writeFileSync(outPath, buffer);
+    }
+}
+
 async function main() {
     console.log("--- DÉBUT DE LA CAPTURE DES CARTES ---");
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
@@ -74,7 +103,10 @@ async function main() {
         try {
             console.log(`\n📰 ${source.name}: ${source.url}`);
             await page.goto(source.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
+
+            console.log(`  ⬇ scrolling to trigger lazy-loaded content...`);
+            await scrollToLoadMore(page);
 
             let elements = [];
 
@@ -123,7 +155,7 @@ async function main() {
                     }
                     capturedHashes.add(contentHash);
 
-                    await el.screenshot({ path: `card_${count}.png` });
+                    await saveTrimmedScreenshot(el, `card_${count}.png`);
                     console.log(`✓ Card ${count} captured (${source.name} #${i})`);
                     count++;
                     cardsCaptured++;

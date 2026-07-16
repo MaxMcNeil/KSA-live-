@@ -11,9 +11,17 @@
             height: 100vh;
             width: 100vw;
             overflow: hidden;
+            background: #000;
+            font-family: 'Cairo', sans-serif;
+        }
+
+        /* isolated background layer: only THIS pulses, nothing else inherits it */
+        #bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
             background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
             animation: pulseBg 6s ease-in-out infinite;
-            font-family: 'Cairo', sans-serif;
         }
 
         @keyframes pulseBg {
@@ -169,6 +177,7 @@
     </style>
 </head>
 <body>
+    <div id="bg"></div>
     <div id="header">
         <div class="title">برقيات حينية</div>
         <div class="status" id="status">
@@ -177,7 +186,7 @@
     </div>
     <div id="stage"></div>
     <script>
-        const CYCLE_MS = 15000;            // how long each card stays on screen
+        const CYCLE_MS = 10000;            // how long each card stays on screen
         const FOLD_MS = 1000;              // must match the CSS transition duration
         const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
 
@@ -284,6 +293,43 @@
                 // force reflow so the notransition class takes effect before we change transform back
                 void curPage.offsetWidth;
                 curPage.classList.remove('notransition');
+
+                document.getElementById(`slot${cur}`).style.zIndex = 1;
+                nextSlot.style.zIndex = count + 2;
+
+                cur = next;
+            }, FOLD_MS);
+        }
+
+        function startCycle() {
+            if (cycleTimer) clearInterval(cycleTimer);
+            cycleTimer = setInterval(turnPage, CYCLE_MS);
+        }
+
+        async function checkForUpdates() {
+            try {
+                const res = await fetch('total.json?t=' + Date.now());
+                const data = await res.json();
+                if (data.count && data.count !== count) {
+                    console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
+                    buildStage(data.count);
+                }
+            } catch (e) {
+                console.error("En attente des données...", e);
+            }
+        }
+
+        async function init() {
+            setStatusLoading();
+            await checkForUpdates();
+            startCycle();
+            setInterval(checkForUpdates, REFRESH_MS);
+        }
+
+        init();
+    </script>
+</body>
+</html>;
 
                 document.getElementById(`slot${cur}`).style.zIndex = 1;
                 nextSlot.style.zIndex = count + 2;

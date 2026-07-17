@@ -54,7 +54,7 @@
             flex: 0 0 auto;
             z-index: 5;
             text-align: center;
-            padding: 22px 16px 14px;
+            padding: clamp(70px, 9vh, 150px) 16px 14px;
             pointer-events: none;
         }
         #header .title {
@@ -215,7 +215,7 @@
                     osc.type = 'sine';
                     osc.frequency.value = n.freq;
                     gain.gain.setValueAtTime(0.0001, now + n.start);
-                    gain.gain.exponentialRampToValueAtTime(0.16, now + n.start + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.26, now + n.start + 0.02);
                     gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
                     osc.connect(gain);
                     gain.connect(audioCtx.destination);

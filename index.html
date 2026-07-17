@@ -13,6 +13,8 @@
             overflow: hidden;
             background: #000;
             font-family: 'Cairo', sans-serif;
+            display: flex;
+            flex-direction: column;
         }
 
         /* static background layer — no animation */
@@ -48,12 +50,11 @@
         }
 
         #header {
-            position: fixed;
-            top: 26px;
-            left: 50%;
-            transform: translateX(-50%);
+            position: relative;
+            flex: 0 0 auto;
             z-index: 5;
             text-align: center;
+            padding: 22px 16px 14px;
             pointer-events: none;
         }
         #header .title {
@@ -85,20 +86,21 @@
 
         /* --- page-turn stage: exactly TWO slots exist, ever --- */
         #stage {
-            position: fixed;
-            inset: 0;
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
             z-index: 2;
             perspective: 2200px;
         }
 
         .card-slot {
             position: absolute;
-            top: 52%;
+            top: 50%;
             left: 50%;
-            width: 82vw;
-            height: 78vh;
+            width: 92%;
+            height: 92%;
             max-width: 1100px;
-            max-height: 820px;
+            max-height: 900px;
             transform: translate(-50%, -50%);
         }
 
@@ -169,7 +171,7 @@
     </div>
 
     <script>
-        const CYCLE_MS = 15000;            // how long each card stays on screen
+        const CYCLE_MS = 10000;            // how long each card stays on screen
         const FOLD_MS = 1000;              // must match the CSS transition duration
         const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
 

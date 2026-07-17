@@ -197,7 +197,13 @@
         function playChime() {
             try {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioCtx.state === 'suspended') audioCtx.resume();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(() => {});
+                }
+                if (audioCtx.state !== 'running') {
+                    console.warn('Audio still blocked (state=' + audioCtx.state + ') — see OBS audio checklist.');
+                    return;
+                }
                 const now = audioCtx.currentTime;
                 const notes = [
                     { freq: 880, start: 0,    dur: 0.14 },
@@ -220,6 +226,19 @@
                 console.warn('Chime failed (audio may be blocked):', e.message);
             }
         }
+
+        function tryUnlockAudio() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+            } catch (e) { /* ignore */ }
+        }
+        // Grab any interaction/visibility signal we can to unlock audio —
+        // harmless if none ever arrive (e.g. pure OBS source with no clicks).
+        ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evt =>
+            document.addEventListener(evt, tryUnlockAudio, { passive: true })
+        );
+        document.addEventListener('visibilitychange', tryUnlockAudio);
 
         // Reset (or first-time set up) the two-slot stage for a given card count.
         function initStage(newCount) {
@@ -295,6 +314,7 @@
 
         async function init() {
             setStatusLoading();
+            tryUnlockAudio(); // create the context as early as possible
             await checkForUpdates();
             startCycle();
             setInterval(checkForUpdates, REFRESH_MS);

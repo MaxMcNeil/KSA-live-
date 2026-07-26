@@ -6,7 +6,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
     <style>
-        html, body {
+        /* Streaming apps (YouTube Live, etc.) often draw their own header/UI
+           over the top edge of the video. Push everything down by this much
+           so nothing important sits right at the top pixel row.
+           Increase this value if your app's header still covers content. */
+        :root {
+            --top-safe: 70px;
+        }
+
+        html {
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background: #000;
+        }
+        body {
             margin: 0;
             height: 100vh;
             width: 100vw;
@@ -15,6 +30,8 @@
             font-family: 'Cairo', sans-serif;
             display: flex;
             flex-direction: column;
+            padding-top: var(--top-safe);
+            box-sizing: border-box;
         }
 
         #bg {
@@ -52,7 +69,7 @@
             position: relative;
             z-index: 6;
             flex: 0 0 auto;
-            height: clamp(84px, 12vh, 128px);
+            height: clamp(112px, 17vh, 190px);
             overflow: hidden;
             background: linear-gradient(180deg, #330000 0%, #0d0000 85%);
             border-bottom: 3px solid #ff1a1a;
@@ -115,15 +132,23 @@
         }
         .warroom-headline {
             font-weight: 900;
-            font-size: clamp(1.1rem, 2.5vw, 1.7rem);
+            line-height: 1.35;
             color: #fff;
             text-shadow: 0 0 10px rgba(255, 60, 60, 0.7);
             max-width: 100%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 2;
+            -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
+            font-size: clamp(1rem, 2.2vw, 1.55rem);
         }
+        /* the shorter the headline, the bigger it can afford to be —
+           the longer it is, the smaller it shrinks so it fits in full
+           instead of being clipped by the line-clamp above */
+        .warroom-headline.len-short  { font-size: clamp(1.2rem, 2.7vw, 1.8rem); }
+        .warroom-headline.len-medium { font-size: clamp(1rem, 2.2vw, 1.5rem); }
+        .warroom-headline.len-long   { font-size: clamp(0.82rem, 1.8vw, 1.2rem); }
+        .warroom-headline.len-xlong  { font-size: clamp(0.7rem, 1.5vw, 1rem); line-height: 1.25; }
         .warroom-headline.glitch { animation: warroomGlitch 0.4s steps(2); }
         @keyframes warroomGlitch {
             0%   { transform: translate(0, 0);      text-shadow: 2px 0 #ff2b2b, -2px 0 #2bd4ff; }
@@ -762,22 +787,33 @@
             }
         }
 
+        function sizeClassFor(text) {
+            const len = (text || '').length;
+            if (len <= 45) return 'len-short';
+            if (len <= 80) return 'len-medium';
+            if (len <= 130) return 'len-long';
+            return 'len-xlong';
+        }
+
         function showNextNews() {
             const headlineEl = document.getElementById('warroomHeadline');
             const sourceEl = document.getElementById('warroomSource');
             if (!newsItems.length) {
-                headlineEl.classList.remove('glitch');
+                const msg = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
+                headlineEl.classList.remove('glitch', 'len-short', 'len-medium', 'len-long', 'len-xlong');
                 void headlineEl.offsetWidth;
-                headlineEl.textContent = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
+                headlineEl.textContent = msg;
+                headlineEl.classList.add(sizeClassFor(msg));
                 sourceEl.textContent = '';
                 headlineEl.classList.add('glitch');
                 return;
             }
             const item = newsItems[newsIdx % newsItems.length];
             newsIdx++;
-            headlineEl.classList.remove('glitch');
+            headlineEl.classList.remove('glitch', 'len-short', 'len-medium', 'len-long', 'len-xlong');
             void headlineEl.offsetWidth;
             headlineEl.textContent = item.title;
+            headlineEl.classList.add(sizeClassFor(item.title));
             sourceEl.textContent = item.source ? 'المصدر: ' + item.source : '';
             headlineEl.classList.add('glitch');
         }

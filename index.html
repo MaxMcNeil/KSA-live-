@@ -47,6 +47,97 @@
             to   { background-position: 0 51px; }
         }
 
+        /* --- "war room" breaking news panel: prominent, animated, always Arabic --- */
+        #warroom {
+            position: relative;
+            z-index: 6;
+            flex: 0 0 auto;
+            height: clamp(84px, 12vh, 128px);
+            overflow: hidden;
+            background: linear-gradient(180deg, #330000 0%, #0d0000 85%);
+            border-bottom: 3px solid #ff1a1a;
+            animation: warroomPulseBorder 2.4s ease-in-out infinite;
+        }
+        @keyframes warroomPulseBorder {
+            0%, 100% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.4), inset 0 -12px 22px rgba(0,0,0,0.6); }
+            50%      { box-shadow: 0 0 55px rgba(255, 40, 40, 0.85), inset 0 -12px 22px rgba(0,0,0,0.6); }
+        }
+        .warroom-scan {
+            position: absolute;
+            left: 0; right: 0;
+            height: 3px;
+            top: -5%;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.9), transparent);
+            animation: warroomScanMove 3.2s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes warroomScanMove {
+            0%   { top: -5%; }
+            100% { top: 105%; }
+        }
+        .warroom-inner {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 26px;
+            text-align: center;
+            direction: rtl;
+            box-sizing: border-box;
+        }
+        .warroom-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #ff1414;
+            color: #fff;
+            font-weight: 900;
+            font-size: 0.95rem;
+            padding: 3px 18px;
+            border-radius: 14px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 14px rgba(255, 0, 0, 0.6);
+            animation: warroomBadgeFlash 1.1s steps(1) infinite;
+        }
+        @keyframes warroomBadgeFlash {
+            0%, 49%  { opacity: 1; }
+            50%, 100% { opacity: 0.45; }
+        }
+        .warroom-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #fff;
+        }
+        .warroom-headline {
+            font-weight: 900;
+            font-size: clamp(1.1rem, 2.5vw, 1.7rem);
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 60, 60, 0.7);
+            max-width: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+        .warroom-headline.glitch { animation: warroomGlitch 0.4s steps(2); }
+        @keyframes warroomGlitch {
+            0%   { transform: translate(0, 0);      text-shadow: 2px 0 #ff2b2b, -2px 0 #2bd4ff; }
+            25%  { transform: translate(-2px, 1px); text-shadow: -2px 0 #ff2b2b, 2px 0 #2bd4ff; }
+            50%  { transform: translate(2px, -1px); text-shadow: 2px 0 #2bd4ff, -2px 0 #ff2b2b; }
+            75%  { transform: translate(-1px, 0);   text-shadow: -2px 0 #2bd4ff, 2px 0 #ff2b2b; }
+            100% { transform: translate(0, 0);      text-shadow: 0 0 10px rgba(255, 60, 60, 0.7); }
+        }
+        .warroom-source {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #ffb3b3;
+        }
+
         #header {
             position: relative;
             flex: 0 0 auto;
@@ -325,6 +416,15 @@
     </style>
 </head>
 <body>
+    <div id="warroom">
+        <div class="warroom-scan"></div>
+        <div class="warroom-inner">
+            <div class="warroom-badge"><span class="warroom-dot"></span> عاجل — غرفة عمليات الخليج</div>
+            <div class="warroom-headline" id="warroomHeadline">جاري تحميل آخر مستجدات السعودية والخليج…</div>
+            <div class="warroom-source" id="warroomSource"></div>
+        </div>
+    </div>
+
     <div id="bg"></div>
     <div id="header">
         <div class="title">برقيات حينية</div>
@@ -381,6 +481,7 @@
         const FOLD_MS = 1000;
         const REFRESH_MS = 5 * 60 * 1000;
         const POPUP_INTERVAL_MS = 2 * 60 * 1000;
+        const NEWS_ROTATE_MS = 6000; // war-room headline rotation cadence
 
         let count = 0;
         let cardsData = [];
@@ -388,6 +489,8 @@
         let frontIsA = true;
         let cycleTimer = null;
         let audioCtx = null;
+        let newsItems = [];
+        let newsIdx = 0;
 
         function urlFor(i, ts) { return `card_${i}.png?t=${ts}`; }
         function setStatusLoading() { document.getElementById('status').textContent = 'جاري التحميل...'; }
@@ -647,6 +750,38 @@
             }
         }
 
+        async function refreshNews() {
+            try {
+                const res = await fetch('news.json?t=' + Date.now());
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) newsItems = data;
+                }
+            } catch (e) {
+                // keep whatever we already had — the panel below still rotates
+            }
+        }
+
+        function showNextNews() {
+            const headlineEl = document.getElementById('warroomHeadline');
+            const sourceEl = document.getElementById('warroomSource');
+            if (!newsItems.length) {
+                headlineEl.classList.remove('glitch');
+                void headlineEl.offsetWidth;
+                headlineEl.textContent = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
+                sourceEl.textContent = '';
+                headlineEl.classList.add('glitch');
+                return;
+            }
+            const item = newsItems[newsIdx % newsItems.length];
+            newsIdx++;
+            headlineEl.classList.remove('glitch');
+            void headlineEl.offsetWidth;
+            headlineEl.textContent = item.title;
+            sourceEl.textContent = item.source ? 'المصدر: ' + item.source : '';
+            headlineEl.classList.add('glitch');
+        }
+
         async function init() {
             setStatusLoading();
             tryUnlockAudio();
@@ -655,6 +790,11 @@
 
             setTimeout(showCommentPopup, 20000);
             setInterval(showCommentPopup, POPUP_INTERVAL_MS);
+
+            await refreshNews();
+            showNextNews();
+            setInterval(showNextNews, NEWS_ROTATE_MS);
+            setInterval(refreshNews, REFRESH_MS);
 
             await checkForUpdates();
             setInterval(checkForUpdates, REFRESH_MS);

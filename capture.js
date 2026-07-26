@@ -141,6 +141,7 @@ async function main() {
     let count = 0;
     const perSourceCounts = {};
     const capturedHashes = new Set();
+    const cardsMeta = []; // parallel array: cardsMeta[i] describes card_i.png
 
     for (const source of sources) {
         const page = await browser.newPage({
@@ -216,6 +217,17 @@ async function main() {
                     capturedHashes.add(key);
 
                     await saveTrimmedScreenshot(el, `card_${count}.png`);
+
+                    // Pull a short text summary straight from the card's own markup
+                    // (title/excerpt as published) so the live view can show a
+                    // "reading" slide right after the image, with its source.
+                    let summary = '';
+                    try {
+                        const rawText = (await el.textContent() || '').replace(/\s+/g, ' ').trim();
+                        summary = rawText.length > 320 ? rawText.slice(0, 320).trim() + '…' : rawText;
+                    } catch (e) { /* ignore, summary stays empty */ }
+                    cardsMeta.push({ source: source.name, sourceUrl: source.url, summary });
+
                     console.log(`✓ Card ${count} captured (${source.name} #${i})`);
                     count++;
                     cardsCaptured++;
@@ -236,6 +248,7 @@ async function main() {
     }
 
     fs.writeFileSync('total.json', JSON.stringify({ count }));
+    fs.writeFileSync('cards.json', JSON.stringify(cardsMeta));
     console.log(`\n✅ Total: ${count} unique cards captured`);
     console.log(`   Détail: ${JSON.stringify(perSourceCounts)}`);
     console.log(`--- FIN ---\n`);

@@ -17,7 +17,6 @@
             flex-direction: column;
         }
 
-        /* static background layer — no animation */
         #bg {
             position: fixed;
             inset: 0;
@@ -25,7 +24,6 @@
             background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
         }
 
-        /* animated marquee-style alert stripes down each side */
         body::before, body::after {
             content: "";
             position: fixed;
@@ -54,7 +52,7 @@
             flex: 0 0 auto;
             z-index: 5;
             text-align: center;
-            padding: clamp(70px, 9vh, 150px) 16px 14px;
+            padding: clamp(50px, 7vh, 120px) 16px 8px;
             pointer-events: none;
         }
         #header .title {
@@ -84,7 +82,30 @@
             background: #ff1414;
         }
 
-        /* --- page-turn stage: exactly TWO slots exist, ever --- */
+        #worldclock {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 8px 12px 4px;
+            pointer-events: none;
+        }
+        .clock-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(20, 0, 0, 0.55);
+            border: 1px solid rgba(255, 80, 80, 0.35);
+            border-radius: 20px;
+            padding: 5px 14px;
+            box-shadow: 0 0 12px rgba(255, 0, 0, 0.15);
+        }
+        .clock-city { font-size: 0.85rem; font-weight: 700; color: #ffcccc; }
+        .clock-time { font-size: 0.95rem; font-weight: 900; color: #fff; direction: ltr; }
+
         #stage {
             position: relative;
             flex: 1 1 auto;
@@ -124,6 +145,7 @@
             border-radius: 10px;
             box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
         }
+        .page.mode-summary img { display: none; }
 
         .page .sheen {
             position: absolute;
@@ -133,19 +155,115 @@
             opacity: 0;
             pointer-events: none;
         }
-        .page.folding .sheen {
-            opacity: 1;
-            animation: sheenSweep 1s ease-in-out;
-        }
+        .page.folding .sheen { opacity: 1; animation: sheenSweep 1s ease-in-out; }
         @keyframes sheenSweep {
             from { transform: translateX(-100%); }
             to   { transform: translateX(100%); }
         }
+        .page.folding { transform: rotateY(-150deg); opacity: 0; }
 
-        .page.folding {
-            transform: rotateY(-150deg);
-            opacity: 0;
+        .summary-panel {
+            display: none;
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            border-radius: 14px;
+            background: linear-gradient(160deg, #360000 0%, #170000 65%, #000000 100%);
+            border: 2px solid rgba(255, 70, 70, 0.4);
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(255, 0, 0, 0.08);
+            padding: clamp(24px, 4vw, 56px);
+            flex-direction: column;
+            justify-content: center;
+            gap: clamp(16px, 3vh, 34px);
+            direction: rtl;
+            text-align: center;
         }
+        .page.mode-summary .summary-panel { display: flex; }
+
+        .summary-label {
+            align-self: center;
+            display: inline-block;
+            background: #ff2a2a;
+            color: #fff;
+            font-weight: 900;
+            font-size: 1.1rem;
+            padding: 6px 22px;
+            border-radius: 20px;
+            box-shadow: 0 0 18px rgba(255, 0, 0, 0.6);
+        }
+        .summary-text {
+            color: #ffeeee;
+            font-weight: 700;
+            font-size: clamp(1.3rem, 2.6vw, 2.1rem);
+            line-height: 1.7;
+            max-height: 60vh;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 8;
+            -webkit-box-orient: vertical;
+        }
+        .summary-source {
+            align-self: center;
+            font-size: 1.1rem;
+            font-weight: 900;
+            color: #ff9d9d;
+            border-top: 1px solid rgba(255, 120, 120, 0.35);
+            padding-top: 14px;
+        }
+
+        #ticker-wrap {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            height: 54px;
+            overflow: hidden;
+            background: linear-gradient(90deg, #1a0000, #4a0000 50%, #1a0000);
+            border-top: 2px solid rgba(255, 60, 60, 0.5);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.25);
+            display: flex;
+            align-items: center;
+        }
+        #ticker-track {
+            display: flex;
+            white-space: nowrap;
+            will-change: transform;
+            transform: translateX(-50%);
+            animation: tickerCrawl 180s linear infinite;
+        }
+        #ticker-track .ticker-copy {
+            display: inline-block;
+            padding-inline-end: 80px;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffe3e3;
+            direction: rtl;
+        }
+        @keyframes tickerCrawl {
+            from { transform: translateX(-50%); }
+            to   { transform: translateX(0%); }
+        }
+
+        #comment-popup {
+            position: fixed;
+            bottom: 70px;
+            left: 50%;
+            z-index: 20;
+            transform: translate(-50%, 30px);
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(135deg, #ff2a2a, #8f0000);
+            color: #fff;
+            font-weight: 900;
+            font-size: 1.3rem;
+            padding: 16px 34px;
+            border-radius: 30px;
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.55);
+            transition: transform .5s ease, opacity .5s ease;
+            direction: rtl;
+            text-align: center;
+            max-width: 80vw;
+        }
+        #comment-popup.show { opacity: 1; transform: translate(-50%, 0); }
     </style>
 </head>
 <body>
@@ -155,75 +273,147 @@
         <div class="status" id="status">جاري التحميل...</div>
     </div>
 
+    <div id="worldclock"></div>
+
     <div id="stage">
         <div class="card-slot" id="slotA">
             <div class="page" id="pageA">
                 <img id="imgA" alt="">
                 <div class="sheen"></div>
+                <div class="summary-panel">
+                    <div class="summary-label">ملخص الخبر</div>
+                    <div class="summary-text"></div>
+                    <div class="summary-source"></div>
+                </div>
             </div>
         </div>
         <div class="card-slot" id="slotB">
             <div class="page" id="pageB">
                 <img id="imgB" alt="">
                 <div class="sheen"></div>
+                <div class="summary-panel">
+                    <div class="summary-label">ملخص الخبر</div>
+                    <div class="summary-text"></div>
+                    <div class="summary-source"></div>
+                </div>
             </div>
         </div>
     </div>
 
+    <div id="ticker-wrap">
+        <div id="ticker-track">
+            <span class="ticker-copy" id="tickerCopy1"></span>
+            <span class="ticker-copy" id="tickerCopy2"></span>
+        </div>
+    </div>
+
+    <div id="comment-popup"></div>
+
     <script>
-        const CYCLE_MS = 15000;            // how long each card stays on screen
-        const FOLD_MS = 1000;              // must match the CSS transition duration
-        const REFRESH_MS = 5 * 60 * 1000;  // how often to check for freshly captured cards
+        const CYCLE_MS = 15000;
+        const FOLD_MS = 1000;
+        const REFRESH_MS = 5 * 60 * 1000;
+        const POPUP_INTERVAL_MS = 2 * 60 * 1000;
 
         let count = 0;
-        let cur = 0;          // index currently shown
-        let frontIsA = true;  // which of the two slots is currently on top
+        let cardsData = [];
+        let stepIndex = 0;
+        let frontIsA = true;
         let cycleTimer = null;
         let audioCtx = null;
 
-        function urlFor(i, ts) {
-            return `card_${i}.png?t=${ts}`;
-        }
-
-        function setStatusLoading() {
-            document.getElementById('status').textContent = 'جاري التحميل...';
-        }
-
+        function urlFor(i, ts) { return `card_${i}.png?t=${ts}`; }
+        function setStatusLoading() { document.getElementById('status').textContent = 'جاري التحميل...'; }
         function setStatusLive(n) {
             document.getElementById('status').innerHTML =
                 `<span class="live-dot"></span> مباشر — ${n} بطاقة إخبارية`;
         }
 
-        function playChime() {
+        function setSlotContent(slotId, step) {
+            if (count <= 0) return;
+            const page = document.getElementById(`page${slotId}`);
+            const img = document.getElementById(`img${slotId}`);
+            const cardIndex = Math.floor(step / 2) % count;
+            const mode = (step % 2 === 0) ? 'image' : 'summary';
+
+            page.classList.remove('mode-image', 'mode-summary');
+            page.classList.add(mode === 'image' ? 'mode-image' : 'mode-summary');
+
+            if (mode === 'image') {
+                img.src = urlFor(cardIndex, Date.now());
+            } else {
+                const panel = page.querySelector('.summary-panel');
+                const textEl = panel.querySelector('.summary-text');
+                const sourceEl = panel.querySelector('.summary-source');
+                const data = cardsData[cardIndex];
+                if (data && data.summary) {
+                    textEl.textContent = data.summary;
+                    sourceEl.textContent = 'المصدر: ' + (data.source || 'غير معروف');
+                } else {
+                    textEl.textContent = 'لا يتوفر ملخص لهذا الخبر حالياً.';
+                    sourceEl.textContent = '';
+                }
+            }
+        }
+
+        function beepType1(ctx, now) {
+            [{ freq: 880, start: 0, dur: 0.12 }, { freq: 1180, start: 0.10, dur: 0.14 }].forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = n.freq;
+                gain.gain.setValueAtTime(0.0001, now + n.start);
+                gain.gain.exponentialRampToValueAtTime(0.09, now + n.start + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.start);
+                osc.stop(now + n.start + n.dur + 0.02);
+            });
+        }
+        function beepType2(ctx, now) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = 660;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        }
+        function beepType3(ctx, now) {
+            [{ freq: 520, start: 0, dur: 0.1 }, { freq: 520, start: 0.14, dur: 0.1 }].forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = n.freq;
+                gain.gain.setValueAtTime(0.0001, now + n.start);
+                gain.gain.exponentialRampToValueAtTime(0.07, now + n.start + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.start);
+                osc.stop(now + n.start + n.dur + 0.02);
+            });
+        }
+        const beepTypes = [beepType1, beepType2, beepType3];
+
+        function playRandomBeep() {
             try {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume().catch(() => {});
-                }
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
                 if (audioCtx.state !== 'running') {
                     console.warn('Audio still blocked (state=' + audioCtx.state + ') — see OBS audio checklist.');
                     return;
                 }
                 const now = audioCtx.currentTime;
-                const notes = [
-                    { freq: 880, start: 0,    dur: 0.14 },
-                    { freq: 1320, start: 0.12, dur: 0.16 }
-                ];
-                notes.forEach(n => {
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.value = n.freq;
-                    gain.gain.setValueAtTime(0.0001, now + n.start);
-                    gain.gain.exponentialRampToValueAtTime(0.26, now + n.start + 0.02);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.start(now + n.start);
-                    osc.stop(now + n.start + n.dur + 0.02);
-                });
+                const fn = beepTypes[Math.floor(Math.random() * beepTypes.length)];
+                fn(audioCtx, now);
             } catch (e) {
-                console.warn('Chime failed (audio may be blocked):', e.message);
+                console.warn('Beep failed (audio may be blocked):', e.message);
             }
         }
 
@@ -233,22 +423,82 @@
                 if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
             } catch (e) { /* ignore */ }
         }
-        // Grab any interaction/visibility signal we can to unlock audio —
-        // harmless if none ever arrive (e.g. pure OBS source with no clicks).
         ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evt =>
             document.addEventListener(evt, tryUnlockAudio, { passive: true })
         );
         document.addEventListener('visibilitychange', tryUnlockAudio);
 
-        // Reset (or first-time set up) the two-slot stage for a given card count.
+        const WORLD_CLOCK_CITIES = [
+            { label: 'الرياض',   tz: 'Asia/Riyadh' },
+            { label: 'القاهرة',  tz: 'Africa/Cairo' },
+            { label: 'دبي',      tz: 'Asia/Dubai' },
+            { label: 'لندن',     tz: 'Europe/London' },
+            { label: 'نيويورك',  tz: 'America/New_York' },
+            { label: 'طوكيو',    tz: 'Asia/Tokyo' }
+        ];
+        function renderWorldClock() {
+            const el = document.getElementById('worldclock');
+            const now = new Date();
+            el.innerHTML = WORLD_CLOCK_CITIES.map(c => {
+                const time = new Intl.DateTimeFormat('ar-SA', {
+                    timeZone: c.tz, hour: '2-digit', minute: '2-digit', hour12: false
+                }).format(now);
+                return `<span class="clock-chip"><span class="clock-city">${c.label}</span><span class="clock-time">${time}</span></span>`;
+            }).join('');
+        }
+
+        function updateTicker() {
+            const items = [];
+            cardsData.slice(0, 30).forEach(d => {
+                if (d && d.summary) {
+                    const short = d.summary.length > 110 ? d.summary.slice(0, 110).trim() + '…' : d.summary;
+                    items.push(`${d.source ? d.source + ': ' : ''}${short}`);
+                }
+            });
+            if (items.length === 0) items.push('برقيات حينية — آخر الأخبار أولاً بأول');
+
+            const text = items.join('   •   ') + '   •   ';
+            document.getElementById('tickerCopy1').textContent = text;
+            document.getElementById('tickerCopy2').textContent = text;
+
+            const track = document.getElementById('ticker-track');
+            const seconds = Math.max(90, Math.round(text.length * 0.45));
+            track.style.animationDuration = seconds + 's';
+        }
+
+        const COMMENT_MESSAGES = [
+            'شاركونا رأيكم في التعليقات! 💬',
+            'ما رأيكم في هذا الخبر؟ اكتبوا لنا الآن',
+            'لا تنسوا الإعجاب ومشاركة البث مع أصدقائكم',
+            'هل تتفاعلون معنا؟ التعليقات مفتوحة الآن',
+            'أخبرونا من أين تتابعوننا اليوم؟',
+            'شاركنا وجهة نظرك حول آخر الأخبار',
+            'انضموا إلى النقاش في التعليقات 👇',
+            'ما هو الخبر الذي لفت انتباهكم أكثر؟',
+            'تفاعلكم يهمنا، اكتبوا تعليقاتكم الآن',
+            'كونوا جزءًا من الحديث، شاركونا آراءكم'
+        ];
+        let lastCommentMsg = null;
+        function showCommentPopup() {
+            let msg;
+            do {
+                msg = COMMENT_MESSAGES[Math.floor(Math.random() * COMMENT_MESSAGES.length)];
+            } while (msg === lastCommentMsg && COMMENT_MESSAGES.length > 1);
+            lastCommentMsg = msg;
+
+            const popup = document.getElementById('comment-popup');
+            popup.textContent = msg;
+            popup.classList.add('show');
+            setTimeout(() => popup.classList.remove('show'), 7000);
+        }
+
         function initStage(newCount) {
             count = newCount;
-            cur = 0;
+            stepIndex = 0;
             frontIsA = true;
-            const ts = Date.now();
 
-            document.getElementById('imgA').src = urlFor(0, ts);
-            document.getElementById('imgB').src = urlFor(count > 1 ? 1 : 0, ts);
+            setSlotContent('A', 0);
+            setSlotContent('B', 1);
 
             const pageA = document.getElementById('pageA');
             const pageB = document.getElementById('pageB');
@@ -263,10 +513,11 @@
             document.getElementById('slotB').style.zIndex = 2;
 
             setStatusLive(count);
+            updateTicker();
         }
 
         function turnPage() {
-            if (count <= 1) return; // nothing to turn to
+            if (count <= 0) return;
 
             const frontId = frontIsA ? 'A' : 'B';
             const backId  = frontIsA ? 'B' : 'A';
@@ -275,7 +526,7 @@
             const backSlot  = document.getElementById(`slot${backId}`);
 
             frontPage.classList.add('folding');
-            playChime();
+            playRandomBeep();
 
             setTimeout(() => {
                 frontPage.classList.add('notransition');
@@ -286,9 +537,8 @@
                 frontSlot.style.zIndex = 2;
                 backSlot.style.zIndex = 3;
 
-                cur = (cur + 1) % count;
-                const nextIdx = (cur + 1) % count;
-                document.getElementById(`img${frontId}`).src = urlFor(nextIdx, Date.now());
+                stepIndex++;
+                setSlotContent(frontId, stepIndex + 1);
 
                 frontIsA = !frontIsA;
             }, FOLD_MS);
@@ -303,9 +553,21 @@
             try {
                 const res = await fetch('total.json?t=' + Date.now());
                 const data = await res.json();
-                if (data.count && data.count !== count) {
+
+                let newCards = [];
+                try {
+                    const cardsRes = await fetch('cards.json?t=' + Date.now());
+                    if (cardsRes.ok) newCards = await cardsRes.json();
+                } catch (e) { /* cards.json may not exist yet on older deployments */ }
+
+                const countChanged = data.count && data.count !== count;
+                cardsData = Array.isArray(newCards) ? newCards : [];
+
+                if (countChanged) {
                     console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
                     initStage(data.count);
+                } else {
+                    updateTicker();
                 }
             } catch (e) {
                 console.error("En attente des données...", e);
@@ -314,7 +576,13 @@
 
         async function init() {
             setStatusLoading();
-            tryUnlockAudio(); // create the context as early as possible
+            tryUnlockAudio();
+            renderWorldClock();
+            setInterval(renderWorldClock, 1000);
+
+            setTimeout(showCommentPopup, 20000);
+            setInterval(showCommentPopup, POPUP_INTERVAL_MS);
+
             await checkForUpdates();
             startCycle();
             setInterval(checkForUpdates, REFRESH_MS);

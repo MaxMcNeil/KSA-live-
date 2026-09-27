@@ -20,12 +20,27 @@ const cheerio = require('cheerio');
 const Parser = require('rss-parser');
 
 const parser = new Parser({ timeout: 15000 });
+const HTTP_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+};
 
-const FEEDS = [
+// Native-Arabic and English RSS feeds, parsed generically with rss-parser.
+const RSS_FEEDS = [
     { url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9', name: 'الجزيرة نت', lang: 'ar' },
     { url: 'https://www.alquds.co.uk/feed/', name: 'القدس العربي', lang: 'ar' },
     { url: 'https://www.aljazeera.com/xml/rss/all.xml', name: 'Al Jazeera', lang: 'en' },
-    { url: 'https://www.middleeasteye.net/rss', name: 'Middle East Eye', lang: 'en' },
+];
+
+// Middle East Eye has no working RSS feed anymore, so its per-country listing
+// pages are scraped directly instead. Every one of these pages is already
+// scoped to a Gulf country, so no keyword filter is needed for them.
+const MEE_COUNTRY_PAGES = [
+    { url: 'https://www.middleeasteye.net/countries/bahrain', country: 'البحرين' },
+    { url: 'https://www.middleeasteye.net/countries/qatar', country: 'قطر' },
+    { url: 'https://www.middleeasteye.net/countries/saudi-arabia', country: 'السعودية' },
+    { url: 'https://www.middleeasteye.net/countries/uae', country: 'الإمارات' },
+    { url: 'https://www.middleeasteye.net/countries/oman', country: 'عُمان' },
+    { url: 'https://www.middleeasteye.net/countries/kuwait', country: 'الكويت' },
 ];
 
 const GULF_KEYWORDS_AR = [
@@ -81,6 +96,49 @@ function negativityScore(text, lang) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Same story can surface with a query string, trailing slash, or via several
+// country pages (a Gulf-wide story is often tagged to more than one country
+// on MEE) — normalize before dedup-checking so we never show it twice.
+function normalizeLink(link) {
+    if (!link) return '';
+    try {
+        const u = new URL(link);
+        u.search = '';
+        u.hash = '';
+        let path = u.pathname.replace(/\/+$/, '');
+        return (u.host + path).toLowerCase();
+    } catch (e) {
+        return String(link).split('?')[0].replace(/\/+$/, '').toLowerCase();
+    }
+}
+
+async function scrapeMeeCountryPage(page) {
+    const items = [];
+    try {
+        const res = await axios.get(page.url, { headers: HTTP_HEADERS, timeout: 15000 });
+        const $ = cheerio.load(res.data);
+
+        // MEE (Drupal) wraps every teaser headline in an <h2>/<h3> that links
+        // to the article — that reliably separates real headlines from the
+        // nav links and the small topic-tag links sitting next to them.
+        $('h2 a[href], h3 a[href]').each((i, el) => {
+            const hrefRaw = $(el).attr('href') || '';
+            const title = $(el).text().replace(/\s+/g, ' ').trim();
+            if (!title || title.length < 20) return;
+            if (/\/(topics|countries)\//.test(hrefRaw)) return;
+
+            let link;
+            try { link = new URL(hrefRaw, page.url).href; } catch (e) { return; }
+            if (!/\/(news|opinion|reportage|discover|live)\//.test(new URL(link).pathname)) return;
+
+            items.push({ title, link });
+        });
+    } catch (e) {
+        console.warn(`⚠️  MEE page failed: ${page.country} (${page.url}) — ${e.message}`);
+    }
+    return items.slice(0, 15);
+}
+
 async function translateToArabic(text) {
     try {
         const res = await axios.get('https://api.mymemory.translated.net/get', {
@@ -99,8 +157,9 @@ async function translateToArabic(text) {
 
 async function main() {
     const collected = [];
+    const seenLinks = new Set(); // global dedup across every source
 
-    for (const feed of FEEDS) {
+    for (const feed of RSS_FEEDS) {
         try {
             const parsed = await parser.parseURL(feed.url);
             let kept = 0;
@@ -111,6 +170,10 @@ async function main() {
                 const combined = `${rawTitle} ${rawDesc}`;
 
                 if (!matchesGulf(combined, feed.lang)) continue;
+
+                const normalized = normalizeLink(item.link);
+                if (normalized && seenLinks.has(normalized)) continue;
+                if (normalized) seenLinks.add(normalized);
 
                 collected.push({
                     title: rawTitle,
@@ -128,7 +191,28 @@ async function main() {
         }
     }
 
-    // most controversial/negative first, then most recent
+    for (const page of MEE_COUNTRY_PAGES) {
+        const items = await scrapeMeeCountryPage(page);
+        let kept = 0;
+        for (const it of items) {
+            const normalized = normalizeLink(it.link);
+            if (normalized && seenLinks.has(normalized)) continue; // already have this story
+            if (normalized) seenLinks.add(normalized);
+
+            collected.push({
+                title: it.title,
+                link: it.link,
+                source: 'Middle East Eye',
+                lang: 'en',
+                pubDate: '',
+                score: negativityScore(it.title, 'en')
+            });
+            kept++;
+        }
+        console.log(`✓ Middle East Eye (${page.country}): ${kept} item(s) kept`);
+    }
+
+    // most controversial/negative first, then most recent (undated items sort last)
     collected.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return new Date(b.pubDate || 0) - new Date(a.pubDate || 0);

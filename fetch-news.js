@@ -18,6 +18,7 @@ const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Parser = require('rss-parser');
+const { getBatchAnalysis } = require('./analysis');
 
 const parser = new Parser({ timeout: 15000 });
 const HTTP_HEADERS = {
@@ -48,7 +49,10 @@ const GULF_KEYWORDS_AR = [
     'ولي العهد', 'آل سعود', 'بن سلمان', 'المملكة',
     'الإمارات', 'أبوظبي', 'دبي', 'الشارقة',
     'قطر', 'الدوحة', 'البحرين', 'المنامة',
-    'الكويت', 'عمان', 'مسقط', 'سلطنة عمان',
+    // bare "عمان" intentionally excluded — unvocalized it's ambiguous with
+    // Amman, Jordan's capital. "عُمان" (with the disambiguating diacritic),
+    // "مسقط" and "سلطنة عمان" are unambiguous.
+    'الكويت', 'عُمان', 'مسقط', 'سلطنة عمان',
     'الخليج', 'دول الخليج', 'مجلس التعاون الخليجي'
 ];
 const GULF_KEYWORDS_EN = [
@@ -234,6 +238,10 @@ async function main() {
     }
 
     if (finalItems.length > 0) {
+        console.log(`✍ generating editorial analysis for ${finalItems.length} war-room item(s)...`);
+        const analyses = await getBatchAnalysis(finalItems.map(it => it.title));
+        finalItems.forEach((it, i) => { it.analysis = analyses[i]; });
+
         fs.writeFileSync('news.json', JSON.stringify(finalItems));
         console.log(`\n✅ news.json written with ${finalItems.length} Gulf/KSA item(s)`);
     } else {

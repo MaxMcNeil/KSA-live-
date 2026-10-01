@@ -69,7 +69,7 @@
             position: relative;
             z-index: 6;
             flex: 0 0 auto;
-            height: clamp(112px, 17vh, 190px);
+            height: clamp(140px, 22vh, 230px);
             overflow: hidden;
             background: linear-gradient(180deg, #330000 0%, #0d0000 85%);
             border-bottom: 3px solid #ff1a1a;
@@ -156,6 +156,20 @@
             50%  { transform: translate(2px, -1px); text-shadow: 2px 0 #2bd4ff, -2px 0 #ff2b2b; }
             75%  { transform: translate(-1px, 0);   text-shadow: -2px 0 #2bd4ff, 2px 0 #ff2b2b; }
             100% { transform: translate(0, 0);      text-shadow: 0 0 10px rgba(255, 60, 60, 0.7); }
+        }
+        .warroom-analysis {
+            font-size: clamp(0.82rem, 1.7vw, 1.08rem);
+            font-weight: 700;
+            color: #ffe9b0;
+            background: rgba(212, 175, 55, 0.14);
+            border: 1px solid rgba(212, 175, 55, 0.55);
+            border-radius: 10px;
+            padding: 4px 16px;
+            max-width: 94%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
         }
         .warroom-source {
             font-size: 0.85rem;
@@ -345,10 +359,10 @@
             background: linear-gradient(160deg, #360000 0%, #170000 65%, #000000 100%);
             border: 2px solid rgba(255, 70, 70, 0.4);
             box-shadow: 0 0 60px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(255, 0, 0, 0.08);
-            padding: clamp(24px, 4vw, 56px);
+            padding: clamp(22px, 3.5vw, 48px);
             flex-direction: column;
             justify-content: center;
-            gap: clamp(16px, 3vh, 34px);
+            gap: clamp(10px, 2vh, 22px);
             direction: rtl;
             text-align: center;
         }
@@ -368,12 +382,42 @@
         .summary-text {
             color: #ffeeee;
             font-weight: 700;
-            font-size: clamp(1.3rem, 2.6vw, 2.1rem);
-            line-height: 1.7;
-            max-height: 60vh;
+            font-size: clamp(1.05rem, 2.1vw, 1.65rem);
+            line-height: 1.6;
+            max-height: 26vh;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 8;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+        }
+        .analysis-block {
+            background: rgba(212, 175, 55, 0.08);
+            border: 1.5px solid rgba(212, 175, 55, 0.55);
+            border-radius: 12px;
+            padding: clamp(10px, 1.6vw, 18px);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .analysis-label {
+            align-self: center;
+            display: inline-block;
+            background: #d4af37;
+            color: #2a1a00;
+            font-weight: 900;
+            font-size: 0.95rem;
+            padding: 4px 16px;
+            border-radius: 16px;
+        }
+        .analysis-text {
+            color: #ffe9b0;
+            font-weight: 700;
+            font-size: clamp(0.95rem, 1.9vw, 1.35rem);
+            line-height: 1.55;
+            max-height: 24vh;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
         }
         .summary-source {
@@ -446,6 +490,7 @@
         <div class="warroom-inner">
             <div class="warroom-badge"><span class="warroom-dot"></span> عاجل — غرفة عمليات الخليج</div>
             <div class="warroom-headline" id="warroomHeadline">جاري تحميل آخر مستجدات السعودية والخليج…</div>
+            <div class="warroom-analysis" id="warroomAnalysis"></div>
             <div class="warroom-source" id="warroomSource"></div>
         </div>
     </div>
@@ -474,6 +519,10 @@
                 <div class="summary-panel">
                     <div class="summary-label">ملخص الخبر</div>
                     <div class="summary-text"></div>
+                    <div class="analysis-block">
+                        <div class="analysis-label">🔎 تحليل برقيات حينية</div>
+                        <div class="analysis-text"></div>
+                    </div>
                     <div class="summary-source"></div>
                 </div>
             </div>
@@ -485,6 +534,10 @@
                 <div class="summary-panel">
                     <div class="summary-label">ملخص الخبر</div>
                     <div class="summary-text"></div>
+                    <div class="analysis-block">
+                        <div class="analysis-label">🔎 تحليل برقيات حينية</div>
+                        <div class="analysis-text"></div>
+                    </div>
                     <div class="summary-source"></div>
                 </div>
             </div>
@@ -539,6 +592,8 @@
             } else {
                 const panel = page.querySelector('.summary-panel');
                 const textEl = panel.querySelector('.summary-text');
+                const analysisBlock = panel.querySelector('.analysis-block');
+                const analysisTextEl = panel.querySelector('.analysis-text');
                 const sourceEl = panel.querySelector('.summary-source');
                 const data = cardsData[cardIndex];
                 if (data && data.summary) {
@@ -547,6 +602,13 @@
                 } else {
                     textEl.textContent = 'لا يتوفر ملخص لهذا الخبر حالياً.';
                     sourceEl.textContent = '';
+                }
+                if (data && data.analysis) {
+                    analysisTextEl.textContent = data.analysis;
+                    analysisBlock.style.display = 'flex';
+                } else {
+                    analysisTextEl.textContent = '';
+                    analysisBlock.style.display = 'none';
                 }
             }
         }
@@ -797,6 +859,7 @@
 
         function showNextNews() {
             const headlineEl = document.getElementById('warroomHeadline');
+            const analysisEl = document.getElementById('warroomAnalysis');
             const sourceEl = document.getElementById('warroomSource');
             if (!newsItems.length) {
                 const msg = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
@@ -804,6 +867,8 @@
                 void headlineEl.offsetWidth;
                 headlineEl.textContent = msg;
                 headlineEl.classList.add(sizeClassFor(msg));
+                analysisEl.textContent = '';
+                analysisEl.style.display = 'none';
                 sourceEl.textContent = '';
                 headlineEl.classList.add('glitch');
                 return;
@@ -814,6 +879,13 @@
             void headlineEl.offsetWidth;
             headlineEl.textContent = item.title;
             headlineEl.classList.add(sizeClassFor(item.title));
+            if (item.analysis) {
+                analysisEl.textContent = '🔎 ' + item.analysis;
+                analysisEl.style.display = '-webkit-box';
+            } else {
+                analysisEl.textContent = '';
+                analysisEl.style.display = 'none';
+            }
             sourceEl.textContent = item.source ? 'المصدر: ' + item.source : '';
             headlineEl.classList.add('glitch');
         }

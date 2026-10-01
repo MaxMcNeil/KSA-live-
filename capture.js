@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const sharp = require('sharp');
 const fs = require('fs');
+const { getBatchAnalysis } = require('./analysis');
 
 // Capture order == display order (cards are numbered sequentially as they're
 // found), so this array order controls what plays first on the live view.
@@ -111,6 +112,61 @@ async function saveTrimmedScreenshot(el, outPath) {
     }
 }
 
+// Re-works every captured card visually — brand color wash, gold frame, and a
+// circular channel-logo watermark — so what airs is a transformed, branded
+// asset rather than a verbatim republish of the source's screenshot.
+async function brandCard(imgPath) {
+    try {
+        const img = sharp(imgPath);
+        const meta = await img.metadata();
+        const w = meta.width || 400;
+        const h = meta.height || 300;
+
+        // subtle brand-color wash, unifies the look across all 3 source sites
+        const washSvg = Buffer.from(
+            `<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#4a0000" opacity="0.07"/></svg>`
+        );
+
+        const BORDER = 10;
+        const washed = await img
+            .composite([{ input: washSvg, blend: 'soft-light' }])
+            .extend({ top: BORDER, bottom: BORDER, left: BORDER, right: BORDER, background: { r: 18, g: 0, b: 0, alpha: 1 } })
+            .toBuffer();
+
+        const fw = w + BORDER * 2;
+        const fh = h + BORDER * 2;
+
+        const frameSvg = Buffer.from(
+            `<svg width="${fw}" height="${fh}"><rect x="1" y="1" width="${fw - 2}" height="${fh - 2}" ` +
+            `fill="none" stroke="#d4af37" stroke-width="2" opacity="0.9"/></svg>`
+        );
+
+        const composites = [{ input: frameSvg, top: 0, left: 0 }];
+
+        try {
+            const logoSize = Math.max(30, Math.round(Math.min(fw, fh) * 0.11));
+            const circleMask = Buffer.from(
+                `<svg width="${logoSize}" height="${logoSize}"><circle cx="${logoSize / 2}" cy="${logoSize / 2}" r="${logoSize / 2}" fill="#fff"/></svg>`
+            );
+            const logoBuf = await sharp('channel-logo.jpg')
+                .resize(logoSize, logoSize, { fit: 'cover' })
+                .composite([{ input: circleMask, blend: 'dest-in' }])
+                .png()
+                .toBuffer();
+            const margin = Math.round(logoSize * 0.35);
+            composites.push({ input: logoBuf, top: fh - logoSize - margin, left: fw - logoSize - margin });
+        } catch (e) {
+            console.warn(`  ⚠ logo watermark skipped: ${e.message}`);
+        }
+
+        const tmpPath = `${imgPath}.branding.tmp.png`;
+        await sharp(washed).composite(composites).toFile(tmpPath);
+        fs.renameSync(tmpPath, imgPath);
+    } catch (e) {
+        console.warn(`  ⚠ branding failed for ${imgPath}, keeping plain screenshot: ${e.message}`);
+    }
+}
+
 function cacheBustedUrl(url) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}_cb=${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -203,6 +259,7 @@ async function main() {
             }
 
             let cardsCaptured = 0;
+            const sourceStartIdx = cardsMeta.length;
             for (let i = 0; i < elements.length; i++) {
                 try {
                     const el = elements[i];
@@ -217,6 +274,7 @@ async function main() {
                     capturedHashes.add(key);
 
                     await saveTrimmedScreenshot(el, `card_${count}.png`);
+                    await brandCard(`card_${count}.png`);
 
                     // Pull a short text summary straight from the card's own markup
                     // (title/excerpt as published) so the live view can show a
@@ -238,7 +296,17 @@ async function main() {
             }
 
             perSourceCounts[source.name] = cardsCaptured;
-            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards captured\n`);
+            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards captured`);
+
+            // one API call per source (not per card) adds real editorial
+            // context to every headline instead of just displaying it as-is
+            const newEntries = cardsMeta.slice(sourceStartIdx);
+            if (newEntries.length > 0) {
+                console.log(`  ✍ generating editorial analysis for ${newEntries.length} ${source.name} card(s)...`);
+                const analyses = await getBatchAnalysis(newEntries.map(e => e.summary || e.source));
+                newEntries.forEach((entry, i) => { entry.analysis = analyses[i]; });
+            }
+            console.log('');
 
         } catch (e) {
             console.error(`❌ ${source.name} error:`, e.message);

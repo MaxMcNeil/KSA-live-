@@ -1,0 +1,12 @@
+# Regenerated fresh by the workflow on every run (npm install ...) — never
+# needs to be committed. If it's already tracked in this repo, the workflow's
+# "untrack node_modules" step (see update.yml) will remove it from git once.
+node_modules/
+
+# Debug artifacts capture.js writes only when a source site's selectors fail
+debug_*.html
+debug_*.png
+
+# Stray tmp files from capture.js's image-branding step, in case one is ever
+# left behind by an interrupted run
+*.branding.tmp.png

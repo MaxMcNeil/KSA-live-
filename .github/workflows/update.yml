@@ -20,6 +20,7 @@ jobs:
       - run: |
           git config user.name "bot"
           git config user.email "bot@github.com"
+          git rm -r --cached node_modules > /dev/null 2>&1 || true
           git add -A
           git commit -m "Update cards" || echo "No changes"
           git push

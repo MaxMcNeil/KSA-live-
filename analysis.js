@@ -27,9 +27,12 @@
 
 const axios = require('axios');
 
-// Override with a repo variable/secret named GEMINI_MODEL if Google renames
-// or retires this alias — no code change needed, just the env value.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+// "gemini-flash-latest" is Google's auto-updating alias — it always points
+// to whatever the current Flash model is, so it survives individual model
+// retirements (e.g. gemini-2.0-flash itself was shut down 2026-06-01, which
+// is exactly the kind of breakage pinning a dated model name invites).
+// Override with a repo variable/secret named GEMINI_MODEL if needed.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 const GCC_COUNTRIES = {
     'السعودية': ['السعودية', 'سعودي', 'سعودية', 'الرياض', 'جدة', 'مكة', 'المدينة المنورة', 'ولي العهد', 'آل سعود', 'بن سلمان', 'المملكة'],

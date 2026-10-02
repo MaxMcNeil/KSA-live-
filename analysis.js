@@ -1,13 +1,22 @@
 // analysis.js
-// Generates a short Arabic "analysis/context" line for each headline —
-// FULLY OFFLINE. No API key, no network call, no rate limit, no cost, no
-// external dependency that could fail, get deprecated (as GitHub Models was,
-// retired 2026-07-30) or disrupt the live.
+// Generates a short Arabic "analysis/context" line for each headline.
 //
-// Trade-off, stated plainly: this is rule-based (entity + category detection
-// picking from a template pool), not a real per-article LLM analysis. It's
-// deliberately generic/framing-only (no invented facts) so it's always safe
-// to show. To make it feel sharper despite being offline, it:
+// PRIMARY: Google Gemini (free tier, Google AI Studio — no credit card).
+// Real per-article understanding instead of templated boilerplate.
+//
+// FALLBACK: a fully offline, zero-dependency rule-based generator (entity +
+// category detection), used automatically whenever Gemini is unavailable —
+// no key set, quota hit, network error, or a malformed/unexpected response
+// (Google's own developer forum has recent reports, Aug–Sep 2026, of
+// intermittent 404s on Flash-model aliases, so this WILL happen sometimes).
+// The live never breaks either way — worst case, quality quietly degrades
+// to templated for that batch until Gemini is reachable again.
+//
+// The offline generator, stated plainly: it's rule-based (entity + category
+// detection picking from a template pool), not real analysis — generic/
+// framing-only (no invented facts) so it's always safe to show, but it's a
+// safety net, not the intended everyday experience. To make it feel sharper
+// anyway, it:
 //   - recognizes not just the 6 Gulf countries but the regional actors that
 //     actually drive most Gulf-adjacent war/security coverage (Yemen, the
 //     Houthis, Iran, Israel, Gaza, the Red Sea, the US)
@@ -15,6 +24,12 @@
 //     conflict stories), instead of a flat single-entity line
 //   - scales the sentence's intensity wording to how many alarming keywords
 //     were actually found, instead of a flat tone for everything
+
+const axios = require('axios');
+
+// Override with a repo variable/secret named GEMINI_MODEL if Google renames
+// or retires this alias — no code change needed, just the env value.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 const GCC_COUNTRIES = {
     'السعودية': ['السعودية', 'سعودي', 'سعودية', 'الرياض', 'جدة', 'مكة', 'المدينة المنورة', 'ولي العهد', 'آل سعود', 'بن سلمان', 'المملكة'],
@@ -187,13 +202,80 @@ function buildAnalysis(text) {
     return prefix + line;
 }
 
+function offlineBatch(texts) {
+    return texts.map(t => buildAnalysis(t));
+}
+
+let warnedMissingKey = false;
+
+// One batched Gemini call for a whole list of headlines (not one call per
+// item) — keeps call volume tiny and comfortably inside any free-tier quota.
+// Returns null (never throws) on any problem, so the caller can fall back.
+async function tryGemini(texts) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        if (!warnedMissingKey) {
+            console.warn('  ⚠ GEMINI_API_KEY غير مُعرَّف — سيتم استخدام نظام القوالب المحلي بدل تحليل حقيقي. ' +
+                'أضف السر (secret) في إعدادات GitHub للحصول على تحليل فعلي لكل خبر.');
+            warnedMissingKey = true;
+        }
+        return null;
+    }
+
+    const numbered = texts.map((t, i) => `${i + 1}. ${String(t || '').slice(0, 260)}`).join('\n');
+    const prompt =
+        'أنت محرر أخبار متخصص في شؤون السعودية والخليج. لكل عنوان/مقتطف من العناصر المرقمة أدناه، ' +
+        'اكتب سطرًا إلى سطرين (تحليل أو سياق) باللغة العربية الفصحى يضيفان معلومة فعلية — ' +
+        'خلفية الحدث، سبب أهميته، أو تداعياته المحتملة — دون إعادة صياغة العنوان نفسه ودون حشو، ' +
+        'وبالاعتماد حصرًا على معلومات واردة في النص (لا تخترع أسماء أو أرقامًا أو تواريخ).\n' +
+        `أجب حصرًا بمصفوفة JSON تحتوي على ${texts.length} نصًا بنفس الترتيب، بدون أي شرح أو Markdown أو نص خارج المصفوفة.\n\n${numbered}`;
+
+    try {
+        const res = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+            {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: { temperature: 0.4, maxOutputTokens: Math.min(4000, 200 * texts.length + 300) }
+            },
+            {
+                headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+                timeout: 30000
+            }
+        );
+
+        const parts = res.data && res.data.candidates && res.data.candidates[0] &&
+                      res.data.candidates[0].content && res.data.candidates[0].content.parts;
+        const raw = (parts || []).map(p => p.text || '').join('').trim();
+        const cleaned = raw
+            .replace(/^```json\s*/i, '')
+            .replace(/^```\s*/i, '')
+            .replace(/```\s*$/i, '')
+            .trim();
+
+        const arr = JSON.parse(cleaned);
+        if (Array.isArray(arr) && arr.length === texts.length && arr.every(a => typeof a === 'string' && a.trim())) {
+            return arr.map(a => a.trim());
+        }
+        console.warn('  ⚠ Gemini: شكل استجابة غير متطابق — التراجع إلى النظام المحلي لهذه الدفعة');
+    } catch (e) {
+        const status = e.response ? e.response.status : null;
+        console.warn(`  ⚠ Gemini فشل${status ? ` (HTTP ${status})` : ''}: ${e.message} — التراجع إلى النظام المحلي لهذه الدفعة`);
+    }
+    return null;
+}
+
 /**
  * @param {string[]} texts - headlines/excerpts (Arabic)
  * @returns {Promise<string[]>} same length as texts — kept async so call
  *          sites (capture.js / fetch-news.js) don't need to change.
  */
 async function getBatchAnalysis(texts) {
-    return (texts || []).map(t => buildAnalysis(t));
+    if (!texts || texts.length === 0) return [];
+
+    const fromGemini = await tryGemini(texts);
+    if (fromGemini) return fromGemini;
+
+    return offlineBatch(texts);
 }
 
 module.exports = { getBatchAnalysis };

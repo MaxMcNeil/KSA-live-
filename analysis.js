@@ -27,13 +27,20 @@
 
 const axios = require('axios');
 
-// gemini-2.0-flash was shut down 2026-06-01 (hence the earlier 404s).
-// gemini-flash-latest (the auto-updating alias) resolved that, but returned
-// 503 "overloaded" under free-tier load — common on shared aliases. Pinned
-// to gemini-2.5-flash instead; combined with the retry logic below this
-// should clear most transient failures either way.
-// Override with a repo variable/secret named GEMINI_MODEL if needed.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Google's model naming has been a moving target throughout 2026
+// (gemini-2.0-flash shut down 2026-06-01 → 404; gemini-flash-latest → 503
+// under free-tier load; gemini-2.5-flash → 404 again for this key/region).
+// Rather than guess one name at a time across multiple slow workflow runs,
+// try an ordered list and remember whichever one actually works.
+// Override with a repo variable/secret named GEMINI_MODEL to force one name.
+const GEMINI_MODEL_CANDIDATES = process.env.GEMINI_MODEL
+    ? [process.env.GEMINI_MODEL]
+    : ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash-001', 'gemini-2.5-flash-lite', 'gemini-pro-latest'];
+
+// Cached for the lifetime of this process (one capture.js or fetch-news.js
+// run) so once a working model is found, every subsequent batch in the same
+// run uses it directly instead of re-probing dead candidates each time.
+let workingModel = null;
 
 const GCC_COUNTRIES = {
     'السعودية': ['السعودية', 'سعودي', 'سعودية', 'الرياض', 'جدة', 'مكة', 'المدينة المنورة', 'ولي العهد', 'آل سعود', 'بن سلمان', 'المملكة'],
@@ -223,9 +230,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 const RETRYABLE_STATUSES = new Set([503, 429, 500, 502, 504]);
 const RETRY_DELAYS_MS = [2000, 5000];
 
-async function callGeminiOnce(texts, apiKey, prompt) {
+async function callGeminiOnce(texts, apiKey, prompt, model) {
     const res = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.4, maxOutputTokens: Math.min(4000, 200 * texts.length + 300) }
@@ -252,6 +259,38 @@ async function callGeminiOnce(texts, apiKey, prompt) {
     throw new Error('shape-mismatch'); // treated as non-retryable below
 }
 
+// Tries one model, with retries for transient errors (503/429/5xx) on that
+// model specifically. Returns { ok: true, result } / { ok: false, status }
+// so the caller can decide whether to move on to the next candidate model.
+async function tryModel(texts, apiKey, prompt, model) {
+    const attempts = RETRY_DELAYS_MS.length + 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+            const result = await callGeminiOnce(texts, apiKey, prompt, model);
+            return { ok: true, result };
+        } catch (e) {
+            const status = e.response ? e.response.status : null;
+            const isLast = attempt === attempts - 1;
+            const retryable = status && RETRYABLE_STATUSES.has(status);
+
+            if (retryable && !isLast) {
+                const delay = RETRY_DELAYS_MS[attempt];
+                console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — إعادة المحاولة خلال ${delay / 1000} ثوانٍ...`);
+                await sleep(delay);
+                continue;
+            }
+
+            if (e.message === 'shape-mismatch') {
+                console.warn(`  ⚠ Gemini (${model}): شكل استجابة غير متطابق`);
+            } else {
+                console.warn(`  ⚠ Gemini (${model}) فشل${status ? ` (HTTP ${status})` : ''}: ${e.message}`);
+            }
+            return { ok: false, status };
+        }
+    }
+    return { ok: false, status: null };
+}
+
 async function tryGemini(texts) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -271,30 +310,25 @@ async function tryGemini(texts) {
         'وبالاعتماد حصرًا على معلومات واردة في النص (لا تخترع أسماء أو أرقامًا أو تواريخ).\n' +
         `أجب حصرًا بمصفوفة JSON تحتوي على ${texts.length} نصًا بنفس الترتيب، بدون أي شرح أو Markdown أو نص خارج المصفوفة.\n\n${numbered}`;
 
-    const attempts = RETRY_DELAYS_MS.length + 1;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-            return await callGeminiOnce(texts, apiKey, prompt);
-        } catch (e) {
-            const status = e.response ? e.response.status : null;
-            const isLast = attempt === attempts - 1;
-            const retryable = status && RETRYABLE_STATUSES.has(status);
-
-            if (retryable && !isLast) {
-                const delay = RETRY_DELAYS_MS[attempt];
-                console.warn(`  ⚠ Gemini فشل (HTTP ${status}) — إعادة المحاولة خلال ${delay / 1000} ثوانٍ...`);
-                await sleep(delay);
-                continue;
-            }
-
-            if (e.message === 'shape-mismatch') {
-                console.warn('  ⚠ Gemini: شكل استجابة غير متطابق — التراجع إلى النظام المحلي لهذه الدفعة');
-            } else {
-                console.warn(`  ⚠ Gemini فشل نهائيًا${status ? ` (HTTP ${status})` : ''}: ${e.message} — التراجع إلى النظام المحلي لهذه الدفعة`);
-            }
-            return null;
-        }
+    // a model already confirmed working earlier in this run — use it directly
+    if (workingModel) {
+        const r = await tryModel(texts, apiKey, prompt, workingModel);
+        if (r.ok) return r.result;
+        workingModel = null; // it stopped working mid-run — fall through and re-probe
     }
+
+    for (const model of GEMINI_MODEL_CANDIDATES) {
+        const r = await tryModel(texts, apiKey, prompt, model);
+        if (r.ok) {
+            workingModel = model;
+            console.log(`  ✓ Gemini: يعمل عبر النموذج "${model}"`);
+            return r.result;
+        }
+        // 404 means this model name doesn't exist/isn't accessible — skip
+        // straight to the next candidate instead of wasting more calls on it
+    }
+
+    console.warn('  ⚠ Gemini: فشلت كل النماذج المرشحة — التراجع إلى النظام المحلي لهذه الدفعة');
     return null;
 }
 

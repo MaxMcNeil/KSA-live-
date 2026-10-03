@@ -27,15 +27,20 @@
 
 const axios = require('axios');
 
-// Google's model naming has been a moving target throughout 2026
-// (gemini-2.0-flash shut down 2026-06-01 → 404; gemini-flash-latest → 503
-// under free-tier load; gemini-2.5-flash → 404 again for this key/region).
-// Rather than guess one name at a time across multiple slow workflow runs,
-// try an ordered list and remember whichever one actually works.
-// Override with a repo variable/secret named GEMINI_MODEL to force one name.
+// Confirmed across two separate real runs for THIS key: gemini-2.5-flash,
+// gemini-2.0-flash-001 and gemini-2.5-flash-lite are 404 every single time
+// (not transient — this project just has no access to them), and
+// gemini-pro-latest's free quota is too tight for this volume (429 every
+// time). Trying all five per batch was actively harmful: up to 15 requests
+// in ~15s, 9 of them guaranteed-wasted, which was very likely what tipped
+// gemini-flash-latest itself into 429 territory. Down to the one model that
+// has actually ever worked, so every retry goes toward the model that can
+// succeed instead of being burned on dead ends.
+// Override with a repo variable/secret named GEMINI_MODEL to force a name
+// (e.g. to re-test one of the dropped ones later).
 const GEMINI_MODEL_CANDIDATES = process.env.GEMINI_MODEL
     ? [process.env.GEMINI_MODEL]
-    : ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash-001', 'gemini-2.5-flash-lite', 'gemini-pro-latest'];
+    : ['gemini-flash-latest'];
 
 // Cached for the lifetime of this process (one capture.js or fetch-news.js
 // run) so once a working model is found, every subsequent batch in the same
@@ -225,17 +230,46 @@ let warnedMissingKey = false;
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // 503 ("model overloaded") and 429 (rate limit) are the Gemini free tier's
-// most common failure modes, and both are usually transient — a short retry
+// most common failure modes, and both are usually transient — a retry
 // clears most of them instead of giving up on real analysis immediately.
+// Widened from the original 2s/5s, which real 429 responses blew straight
+// through three times in a row.
 const RETRYABLE_STATUSES = new Set([503, 429, 500, 502, 504]);
-const RETRY_DELAYS_MS = [2000, 5000];
+const RETRY_DELAYS_MS = [5000, 15000];
+
+// On 429, Gemini's own error body usually names how long it wants us to
+// wait (error.details[].retryDelay, e.g. "19s") — honor that over our fixed
+// schedule when it's present and longer, since it's the actual quota-reset
+// hint rather than a guess.
+function suggestedRetryDelayMs(errorResponseData) {
+    try {
+        const details = errorResponseData && errorResponseData.error && errorResponseData.error.details;
+        const retryInfo = (details || []).find(d => typeof d.retryDelay === 'string');
+        if (retryInfo) {
+            const seconds = parseFloat(retryInfo.retryDelay.replace('s', ''));
+            if (!isNaN(seconds)) return Math.round(seconds * 1000);
+        }
+    } catch (e) { /* fall through to the fixed schedule */ }
+    return null;
+}
 
 async function callGeminiOnce(texts, apiKey, prompt, model) {
     const res = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.4, maxOutputTokens: Math.min(4000, 200 * texts.length + 300) }
+            generationConfig: {
+                temperature: 0.4,
+                // Google's own docs: responseMimeType alone is only a "strong
+                // hint" and can still yield stray text/malformed JSON — a
+                // responseSchema is required to actually guarantee valid JSON.
+                responseMimeType: 'application/json',
+                responseSchema: { type: 'ARRAY', items: { type: 'STRING' } },
+                // 2.5+ models "think" by default, which silently eats into
+                // maxOutputTokens and was truncating our JSON mid-string.
+                thinkingConfig: { thinkingBudget: 0 },
+                maxOutputTokens: Math.min(8000, 220 * texts.length + 500)
+            }
         },
         {
             headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
@@ -274,8 +308,9 @@ async function tryModel(texts, apiKey, prompt, model) {
             const retryable = status && RETRYABLE_STATUSES.has(status);
 
             if (retryable && !isLast) {
-                const delay = RETRY_DELAYS_MS[attempt];
-                console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — إعادة المحاولة خلال ${delay / 1000} ثوانٍ...`);
+                const suggested = suggestedRetryDelayMs(e.response && e.response.data);
+                const delay = Math.max(suggested || 0, RETRY_DELAYS_MS[attempt]);
+                console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — إعادة المحاولة خلال ${Math.round(delay / 1000)} ثوانٍ...`);
                 await sleep(delay);
                 continue;
             }

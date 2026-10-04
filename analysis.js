@@ -345,14 +345,20 @@ async function tryGemini(texts) {
         'وبالاعتماد حصرًا على معلومات واردة في النص (لا تخترع أسماء أو أرقامًا أو تواريخ).\n' +
         `أجب حصرًا بمصفوفة JSON تحتوي على ${texts.length} نصًا بنفس الترتيب، بدون أي شرح أو Markdown أو نص خارج المصفوفة.\n\n${numbered}`;
 
-    // a model already confirmed working earlier in this run — use it directly
+    // a model already confirmed working earlier in this run — use it directly.
+    // Track it so the candidate loop below never retries the exact same
+    // model a second time in the same call (that was doubling request count
+    // — and likely retry-exhaustion time — on every transient 503/429).
+    let justTried = null;
     if (workingModel) {
+        justTried = workingModel;
         const r = await tryModel(texts, apiKey, prompt, workingModel);
         if (r.ok) return r.result;
         workingModel = null; // it stopped working mid-run — fall through and re-probe
     }
 
     for (const model of GEMINI_MODEL_CANDIDATES) {
+        if (model === justTried) continue; // already exhausted its retries just above
         const r = await tryModel(texts, apiKey, prompt, model);
         if (r.ok) {
             workingModel = model;

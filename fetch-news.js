@@ -18,7 +18,7 @@ const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Parser = require('rss-parser');
-const { getBatchAnalysis } = require('./analysis');
+const { getBatchAnalysis, getCategoryFor } = require('./analysis');
 
 const parser = new Parser({ timeout: 15000 });
 const HTTP_HEADERS = {
@@ -238,6 +238,8 @@ async function main() {
     }
 
     if (finalItems.length > 0) {
+        finalItems.forEach(it => { it.category = getCategoryFor(it.title); });
+
         console.log(`✍ generating editorial analysis for ${finalItems.length} war-room item(s)...`);
         const analyses = await getBatchAnalysis(finalItems.map(it => it.title));
         finalItems.forEach((it, i) => { it.analysis = analyses[i]; });

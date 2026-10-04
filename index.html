@@ -64,7 +64,7 @@
             to   { background-position: 0 51px; }
         }
 
-        /* --- "war room" breaking news panel: prominent, animated, always Arabic --- */
+        /* --- "war room" breaking news / analysis panel --- */
         #warroom {
             position: relative;
             z-index: 6;
@@ -130,6 +130,8 @@
             border-radius: 50%;
             background: #fff;
         }
+        .warroom-cat-icon { width: 16px; height: 16px; display: inline-flex; color: #fff; }
+        .warroom-cat-icon svg { width: 100%; height: 100%; }
         .warroom-headline {
             font-weight: 900;
             line-height: 1.35;
@@ -170,11 +172,6 @@
             display: -webkit-box;
             -webkit-line-clamp: 1;
             -webkit-box-orient: vertical;
-        }
-        .warroom-source {
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: #ffb3b3;
         }
 
         #header {
@@ -325,16 +322,6 @@
         }
         .page.notransition { transition: none !important; }
 
-        .page img {
-            display: block;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            border-radius: 10px;
-            box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
-        }
-        .page.mode-summary img { display: none; }
-
         .page .sheen {
             position: absolute;
             inset: 0;
@@ -342,6 +329,7 @@
             background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
             opacity: 0;
             pointer-events: none;
+            z-index: 5;
         }
         .page.folding .sheen { opacity: 1; animation: sheenSweep 1s ease-in-out; }
         @keyframes sheenSweep {
@@ -350,8 +338,10 @@
         }
         .page.folding { transform: rotateY(-150deg); opacity: 0; }
 
-        .summary-panel {
-            display: none;
+        /* --- infocard: entirely our own layout, nothing from any source site.
+             Top ~28% = the bare fact; bottom ~72% = our analysis, per the
+             "fact first, analysis is the main event" structure. --- */
+        .infocard {
             position: absolute;
             inset: 0;
             box-sizing: border-box;
@@ -359,74 +349,76 @@
             background: linear-gradient(160deg, #360000 0%, #170000 65%, #000000 100%);
             border: 2px solid rgba(255, 70, 70, 0.4);
             box-shadow: 0 0 60px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(255, 0, 0, 0.08);
-            padding: clamp(22px, 3.5vw, 48px);
+            display: flex;
             flex-direction: column;
-            justify-content: center;
-            gap: clamp(10px, 2vh, 22px);
             direction: rtl;
-            text-align: center;
         }
-        .page.mode-summary .summary-panel { display: flex; }
-
-        .summary-label {
-            align-self: center;
+        .infocard-fact {
+            flex: 0 0 28%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: clamp(14px, 2.2vw, 26px);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.28);
+            border-bottom: 1px solid rgba(255, 80, 80, 0.3);
+        }
+        .fact-label {
             display: inline-block;
             background: #ff2a2a;
             color: #fff;
             font-weight: 900;
-            font-size: 1.1rem;
-            padding: 6px 22px;
-            border-radius: 20px;
-            box-shadow: 0 0 18px rgba(255, 0, 0, 0.6);
+            font-size: 0.9rem;
+            padding: 4px 18px;
+            border-radius: 16px;
+            box-shadow: 0 0 14px rgba(255, 0, 0, 0.5);
         }
-        .summary-text {
+        .fact-text {
             color: #ffeeee;
-            font-weight: 700;
-            font-size: clamp(1.05rem, 2.1vw, 1.65rem);
-            line-height: 1.6;
-            max-height: 26vh;
+            font-weight: 800;
+            font-size: clamp(1rem, 2vw, 1.5rem);
+            line-height: 1.5;
+            max-height: 100%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 4;
+            -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
         }
-        .analysis-block {
-            background: rgba(212, 175, 55, 0.08);
-            border: 1.5px solid rgba(212, 175, 55, 0.55);
-            border-radius: 12px;
-            padding: clamp(10px, 1.6vw, 18px);
+        .infocard-analysis {
+            flex: 1 1 72%;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            gap: clamp(10px, 1.8vh, 20px);
+            padding: clamp(18px, 3vw, 40px);
+            text-align: center;
+            min-height: 0;
         }
-        .analysis-label {
-            align-self: center;
-            display: inline-block;
-            background: #d4af37;
-            color: #2a1a00;
-            font-weight: 900;
-            font-size: 0.95rem;
-            padding: 4px 16px;
-            border-radius: 16px;
+        .analysis-header {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(212, 175, 55, 0.15);
+            border: 1.5px solid rgba(212, 175, 55, 0.6);
+            border-radius: 20px;
+            padding: 6px 20px;
         }
+        .category-icon { width: clamp(20px, 2.4vw, 28px); height: clamp(20px, 2.4vw, 28px); color: #d4af37; }
+        .category-icon svg { width: 100%; height: 100%; display: block; }
+        .analysis-label-text { font-weight: 900; font-size: 1rem; color: #ffdb8a; }
         .analysis-text {
             color: #ffe9b0;
             font-weight: 700;
-            font-size: clamp(0.95rem, 1.9vw, 1.35rem);
-            line-height: 1.55;
-            max-height: 24vh;
+            font-size: clamp(1.05rem, 2.1vw, 1.6rem);
+            line-height: 1.65;
+            max-height: 100%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 4;
+            -webkit-line-clamp: 6;
             -webkit-box-orient: vertical;
-        }
-        .summary-source {
-            align-self: center;
-            font-size: 1.1rem;
-            font-weight: 900;
-            color: #ff9d9d;
-            border-top: 1px solid rgba(255, 120, 120, 0.35);
-            padding-top: 14px;
         }
 
         #ticker-wrap {
@@ -488,10 +480,13 @@
     <div id="warroom">
         <div class="warroom-scan"></div>
         <div class="warroom-inner">
-            <div class="warroom-badge"><span class="warroom-dot"></span> عاجل — غرفة عمليات الخليج</div>
+            <div class="warroom-badge">
+                <span class="warroom-dot"></span>
+                <span class="warroom-cat-icon" id="warroomCatIcon"></span>
+                عاجل — غرفة عمليات الخليج
+            </div>
             <div class="warroom-headline" id="warroomHeadline">جاري تحميل آخر مستجدات السعودية والخليج…</div>
             <div class="warroom-analysis" id="warroomAnalysis"></div>
-            <div class="warroom-source" id="warroomSource"></div>
         </div>
     </div>
 
@@ -514,31 +509,37 @@
     <div id="stage">
         <div class="card-slot" id="slotA">
             <div class="page" id="pageA">
-                <img id="imgA" alt="">
                 <div class="sheen"></div>
-                <div class="summary-panel">
-                    <div class="summary-label">ملخص الخبر</div>
-                    <div class="summary-text"></div>
-                    <div class="analysis-block">
-                        <div class="analysis-label">🔎 تحليل برقيات حينية</div>
+                <div class="infocard">
+                    <div class="infocard-fact">
+                        <div class="fact-label">الخبر</div>
+                        <div class="fact-text"></div>
+                    </div>
+                    <div class="infocard-analysis">
+                        <div class="analysis-header">
+                            <span class="category-icon"></span>
+                            <span class="analysis-label-text">تحليلنا</span>
+                        </div>
                         <div class="analysis-text"></div>
                     </div>
-                    <div class="summary-source"></div>
                 </div>
             </div>
         </div>
         <div class="card-slot" id="slotB">
             <div class="page" id="pageB">
-                <img id="imgB" alt="">
                 <div class="sheen"></div>
-                <div class="summary-panel">
-                    <div class="summary-label">ملخص الخبر</div>
-                    <div class="summary-text"></div>
-                    <div class="analysis-block">
-                        <div class="analysis-label">🔎 تحليل برقيات حينية</div>
+                <div class="infocard">
+                    <div class="infocard-fact">
+                        <div class="fact-label">الخبر</div>
+                        <div class="fact-text"></div>
+                    </div>
+                    <div class="infocard-analysis">
+                        <div class="analysis-header">
+                            <span class="category-icon"></span>
+                            <span class="analysis-label-text">تحليلنا</span>
+                        </div>
                         <div class="analysis-text"></div>
                     </div>
-                    <div class="summary-source"></div>
                 </div>
             </div>
         </div>
@@ -554,8 +555,7 @@
     <div id="comment-popup"></div>
 
     <script>
-        const IMAGE_DURATION_MS = 3000;    // how long the news card image stays on screen
-        const SUMMARY_DURATION_MS = 15000; // how long the summary/source slide stays on screen (unchanged)
+        const CARD_DURATION_MS = 14000; // how long each infocard (fact + analysis) stays on screen
         const FOLD_MS = 1000;
         const REFRESH_MS = 5 * 60 * 1000;
         const POPUP_INTERVAL_MS = 2 * 60 * 1000;
@@ -570,47 +570,41 @@
         let newsItems = [];
         let newsIdx = 0;
 
-        function urlFor(i, ts) { return `card_${i}.png?t=${ts}`; }
+        // Small hand-built icon set (ours, not borrowed from any library) —
+        // one simple geometric glyph per editorial category, used both on
+        // the infocards and the war-room badge.
+        const CATEGORY_ICONS = {
+            war: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="20" cy="20" r="16"/><line x1="20" y1="8" x2="20" y2="16"/><line x1="20" y1="24" x2="20" y2="32"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="24" y1="20" x2="32" y2="20"/><circle cx="20" cy="20" r="3.5" fill="currentColor"/></svg>',
+            rights: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="20" y1="6" x2="20" y2="34"/><line x1="9" y1="34" x2="31" y2="34"/><line x1="6" y1="12" x2="34" y2="12"/><circle cx="12" cy="18" r="6"/><circle cx="28" cy="18" r="6"/></svg>',
+            security: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 5 L33 10 V20 C33 28 27 34 20 36 C13 34 7 28 7 20 V10 Z"/></svg>',
+            diplomatic: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="15" cy="20" r="11"/><circle cx="25" cy="20" r="11"/></svg>',
+            economic: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="34" x2="34" y2="34"/><rect x="10" y="22" width="6" height="12"/><rect x="17" y="14" width="6" height="20"/><rect x="24" y="8" width="6" height="26"/></svg>',
+            social: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="8" width="28" height="18" rx="5"/><path d="M14 26 L10 34 L20 26"/></svg>',
+            general: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="20" cy="20" r="15"/><line x1="20" y1="16" x2="20" y2="27"/><circle cx="20" cy="11" r="1.6" fill="currentColor" stroke="none"/></svg>'
+        };
+        function iconFor(category) { return CATEGORY_ICONS[category] || CATEGORY_ICONS.general; }
+
         function setStatusLoading() { document.getElementById('status').textContent = 'جاري التحميل...'; }
         function setStatusLive(n) {
             document.getElementById('status').innerHTML =
-                `<span class="live-dot"></span> مباشر — ${n} بطاقة إخبارية`;
+                `<span class="live-dot"></span> مباشر — ${n} تحليل إخباري`;
         }
 
+        // Every slide is our own infocard, built entirely from text data —
+        // no image, nothing visually reproduced from any source site.
         function setSlotContent(slotId, step) {
             if (count <= 0) return;
             const page = document.getElementById(`page${slotId}`);
-            const img = document.getElementById(`img${slotId}`);
-            const cardIndex = Math.floor(step / 2) % count;
-            const mode = (step % 2 === 0) ? 'image' : 'summary';
+            const cardIndex = step % count;
+            const data = cardsData[cardIndex];
 
-            page.classList.remove('mode-image', 'mode-summary');
-            page.classList.add(mode === 'image' ? 'mode-image' : 'mode-summary');
+            const factText = page.querySelector('.fact-text');
+            const analysisText = page.querySelector('.analysis-text');
+            const iconEl = page.querySelector('.category-icon');
 
-            if (mode === 'image') {
-                img.src = urlFor(cardIndex, Date.now());
-            } else {
-                const panel = page.querySelector('.summary-panel');
-                const textEl = panel.querySelector('.summary-text');
-                const analysisBlock = panel.querySelector('.analysis-block');
-                const analysisTextEl = panel.querySelector('.analysis-text');
-                const sourceEl = panel.querySelector('.summary-source');
-                const data = cardsData[cardIndex];
-                if (data && data.summary) {
-                    textEl.textContent = data.summary;
-                    sourceEl.textContent = 'المصدر: ' + (data.source || 'غير معروف');
-                } else {
-                    textEl.textContent = 'لا يتوفر ملخص لهذا الخبر حالياً.';
-                    sourceEl.textContent = '';
-                }
-                if (data && data.analysis) {
-                    analysisTextEl.textContent = data.analysis;
-                    analysisBlock.style.display = 'flex';
-                } else {
-                    analysisTextEl.textContent = '';
-                    analysisBlock.style.display = 'none';
-                }
-            }
+            factText.textContent = (data && data.summary) ? data.summary : 'جارٍ تحميل الخبر...';
+            analysisText.textContent = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
+            iconEl.innerHTML = iconFor(data && data.category);
         }
 
         function beepType1(ctx, now) {
@@ -704,15 +698,16 @@
             }).join('');
         }
 
+        // Ticker content: headlines/analysis only — no source names, ever.
         function updateTicker() {
             const items = [];
             cardsData.slice(0, 30).forEach(d => {
                 if (d && d.summary) {
                     const short = d.summary.length > 110 ? d.summary.slice(0, 110).trim() + '…' : d.summary;
-                    items.push(`${d.source ? d.source + ': ' : ''}${short}`);
+                    items.push(short);
                 }
             });
-            if (items.length === 0) items.push('برقيات حينية — آخر الأخبار أولاً بأول');
+            if (items.length === 0) items.push('برقيات حينية — تحليلنا لآخر الأخبار أولاً بأول');
 
             const text = items.join('   •   ') + '   •   ';
             document.getElementById('tickerCopy1').textContent = text;
@@ -724,14 +719,14 @@
         }
 
         const COMMENT_MESSAGES = [
-            'شاركونا رأيكم في التعليقات! 💬',
-            'ما رأيكم في هذا الخبر؟ اكتبوا لنا الآن',
+            'هل توافقون على هذا التحليل؟ شاركونا رأيكم 💬',
+            'ما تقييمكم لتحليلنا لهذا الموقف؟',
             'لا تنسوا الإعجاب ومشاركة البث مع أصدقائكم',
             'هل تتفاعلون معنا؟ التعليقات مفتوحة الآن',
             'أخبرونا من أين تتابعوننا اليوم؟',
-            'شاركنا وجهة نظرك حول آخر الأخبار',
+            'شاركنا وجهة نظرك حول هذا التحليل',
             'انضموا إلى النقاش في التعليقات 👇',
-            'ما هو الخبر الذي لفت انتباهكم أكثر؟',
+            'ما هو التحليل الذي لفت انتباهكم أكثر؟',
             'تفاعلكم يهمنا، اكتبوا تعليقاتكم الآن',
             'كونوا جزءًا من الحديث، شاركونا آراءكم'
         ];
@@ -778,9 +773,7 @@
 
         function scheduleNextTurn() {
             if (count <= 0) return;
-            // even step currently on screen = image (3s); odd step = summary (unchanged duration)
-            const duration = (stepIndex % 2 === 0) ? IMAGE_DURATION_MS : SUMMARY_DURATION_MS;
-            cycleTimer = setTimeout(turnPage, duration);
+            cycleTimer = setTimeout(turnPage, CARD_DURATION_MS);
         }
 
         function turnPage() {
@@ -860,7 +853,8 @@
         function showNextNews() {
             const headlineEl = document.getElementById('warroomHeadline');
             const analysisEl = document.getElementById('warroomAnalysis');
-            const sourceEl = document.getElementById('warroomSource');
+            const catIconEl = document.getElementById('warroomCatIcon');
+
             if (!newsItems.length) {
                 const msg = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
                 headlineEl.classList.remove('glitch', 'len-short', 'len-medium', 'len-long', 'len-xlong');
@@ -869,7 +863,7 @@
                 headlineEl.classList.add(sizeClassFor(msg));
                 analysisEl.textContent = '';
                 analysisEl.style.display = 'none';
-                sourceEl.textContent = '';
+                catIconEl.innerHTML = '';
                 headlineEl.classList.add('glitch');
                 return;
             }
@@ -886,7 +880,7 @@
                 analysisEl.textContent = '';
                 analysisEl.style.display = 'none';
             }
-            sourceEl.textContent = item.source ? 'المصدر: ' + item.source : '';
+            catIconEl.innerHTML = iconFor(item.category);
             headlineEl.classList.add('glitch');
         }
 

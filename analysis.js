@@ -236,6 +236,10 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 // through three times in a row.
 const RETRYABLE_STATUSES = new Set([503, 429, 500, 502, 504]);
 const RETRY_DELAYS_MS = [5000, 15000];
+// Hard ceiling on any single retry wait, no matter what Gemini suggests.
+// This script runs inside a GitHub Actions job — it must never sleep for
+// hours (see the comment at the call site for what happened when it did).
+const MAX_RETRY_DELAY_MS = 20000;
 
 // On 429, Gemini's own error body usually names how long it wants us to
 // wait (error.details[].retryDelay, e.g. "19s") — honor that over our fixed
@@ -309,7 +313,23 @@ async function tryModel(texts, apiKey, prompt, model) {
 
             if (retryable && !isLast) {
                 const suggested = suggestedRetryDelayMs(e.response && e.response.data);
-                const delay = Math.max(suggested || 0, RETRY_DELAYS_MS[attempt]);
+
+                // A real run hit this: Gemini suggested ~49035s (≈13.6h) —
+                // almost certainly a DAILY quota reset time, not a short
+                // blip. Waiting that long inside a GitHub Actions job hangs
+                // it for hours (it did — had to be force-cancelled, and
+                // nothing got committed the whole time). If the suggestion
+                // is longer than we're willing to wait, there's no point
+                // retrying at all right now — skip straight to fallback/next
+                // candidate instead of sleeping for it.
+                if (suggested !== null && suggested > MAX_RETRY_DELAY_MS) {
+                    console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — المهلة المقترحة طويلة جدًا ` +
+                        `(${Math.round(suggested / 1000)} ثانية ≈ ${(suggested / 3600000).toFixed(1)} ساعة) — ` +
+                        `تجاوز الانتظار والانتقال مباشرة إلى البديل`);
+                    return { ok: false, status };
+                }
+
+                const delay = Math.min(Math.max(suggested || 0, RETRY_DELAYS_MS[attempt]), MAX_RETRY_DELAY_MS);
                 console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — إعادة المحاولة خلال ${Math.round(delay / 1000)} ثوانٍ...`);
                 await sleep(delay);
                 continue;
@@ -387,4 +407,11 @@ async function getBatchAnalysis(texts) {
     return offlineBatch(texts);
 }
 
-module.exports = { getBatchAnalysis };
+// Synchronous, no network — lets capture.js/fetch-news.js tag each item with
+// a category (war/rights/security/diplomatic/economic/social/general) for
+// the UI's category icon, reusing the same detection used for analysis text.
+function getCategoryFor(text) {
+    return detectCategory(normalizeArabic(text));
+}
+
+module.exports = { getBatchAnalysis, getCategoryFor };

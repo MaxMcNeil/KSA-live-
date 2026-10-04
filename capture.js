@@ -1,10 +1,16 @@
 const { chromium } = require('playwright');
-const sharp = require('sharp');
 const fs = require('fs');
-const { getBatchAnalysis } = require('./analysis');
+const { getBatchAnalysis, getCategoryFor } = require('./analysis');
 
 // Capture order == display order (cards are numbered sequentially as they're
 // found), so this array order controls what plays first on the live view.
+//
+// IMPORTANT: this script extracts TEXT ONLY from these pages — no
+// screenshots, no images, nothing visually reproduced from the source
+// sites. Every card displayed on the live is a visual we build ourselves
+// (see index.html) from that text. Source names are kept here purely as
+// internal metadata for our own dedup/debugging — they are never rendered
+// on screen.
 const sources = [
     {
         name: 'AlMarsd',
@@ -29,10 +35,7 @@ const sources = [
 ];
 
 // Removes floating ads / popups / cookie banners / sticky headers before we
-// screenshot anything. These are almost always position:fixed or
-// position:sticky, which is exactly what makes them "bleed" into whichever
-// card happens to be underneath them on screen. Real article cards are
-// normally in-flow (static/relative), so this is safe and won't touch them.
+// read anything. These are almost always position:fixed or position:sticky.
 async function hideOverlaysAndAds(page) {
     await page.evaluate(() => {
         document.querySelectorAll('body *').forEach(el => {
@@ -42,7 +45,6 @@ async function hideOverlaysAndAds(page) {
                 el.style.setProperty('display', 'none', 'important');
             }
         });
-        // common ad/consent/popup container patterns as a belt-and-braces extra pass
         document.querySelectorAll(
             'iframe[id*="google_ads"], iframe[id*="ad_"], [id*="ad-"], ' +
             '[class*="popup"], [class*="cookie"], [class*="consent"], [class*="modal"]'
@@ -63,6 +65,8 @@ async function scrollToLoadMore(page, steps = 6, pauseMs = 900) {
 
 // Scans the live DOM for the most common "card-sized" ancestor around images,
 // marks the winning set with a data attribute, and returns how many were found.
+// (Images are only used as a layout signal to FIND article blocks on the
+// page — nothing about them is ever saved or displayed.)
 async function autoDetectCards(page, sizeWindow) {
     return await page.evaluate((win) => {
         const MARK_ATTR = 'data-capture-card';
@@ -100,82 +104,13 @@ async function autoDetectCards(page, sizeWindow) {
     }, sizeWindow);
 }
 
-async function saveTrimmedScreenshot(el, outPath) {
-    const buffer = await el.screenshot();
-    try {
-        await sharp(buffer)
-            .trim({ background: '#ffffff', threshold: 12 })
-            .toFile(outPath);
-    } catch (e) {
-        console.warn(`  ⚠ trim failed for ${outPath}, saving untrimmed: ${e.message}`);
-        fs.writeFileSync(outPath, buffer);
-    }
-}
-
-// Re-works every captured card visually — brand color wash, gold frame, and a
-// circular channel-logo watermark — so what airs is a transformed, branded
-// asset rather than a verbatim republish of the source's screenshot.
-async function brandCard(imgPath) {
-    try {
-        const img = sharp(imgPath);
-        const meta = await img.metadata();
-        const w = meta.width || 400;
-        const h = meta.height || 300;
-
-        // subtle brand-color wash, unifies the look across all 3 source sites
-        const washSvg = Buffer.from(
-            `<svg width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#4a0000" opacity="0.07"/></svg>`
-        );
-
-        const BORDER = 10;
-        const washed = await img
-            .composite([{ input: washSvg, blend: 'soft-light' }])
-            .extend({ top: BORDER, bottom: BORDER, left: BORDER, right: BORDER, background: { r: 18, g: 0, b: 0, alpha: 1 } })
-            .toBuffer();
-
-        const fw = w + BORDER * 2;
-        const fh = h + BORDER * 2;
-
-        const frameSvg = Buffer.from(
-            `<svg width="${fw}" height="${fh}"><rect x="1" y="1" width="${fw - 2}" height="${fh - 2}" ` +
-            `fill="none" stroke="#d4af37" stroke-width="2" opacity="0.9"/></svg>`
-        );
-
-        const composites = [{ input: frameSvg, top: 0, left: 0 }];
-
-        try {
-            const logoSize = Math.max(30, Math.round(Math.min(fw, fh) * 0.11));
-            const circleMask = Buffer.from(
-                `<svg width="${logoSize}" height="${logoSize}"><circle cx="${logoSize / 2}" cy="${logoSize / 2}" r="${logoSize / 2}" fill="#fff"/></svg>`
-            );
-            const logoBuf = await sharp('channel-logo.jpg')
-                .resize(logoSize, logoSize, { fit: 'cover' })
-                .composite([{ input: circleMask, blend: 'dest-in' }])
-                .png()
-                .toBuffer();
-            const margin = Math.round(logoSize * 0.35);
-            composites.push({ input: logoBuf, top: fh - logoSize - margin, left: fw - logoSize - margin });
-        } catch (e) {
-            console.warn(`  ⚠ logo watermark skipped: ${e.message}`);
-        }
-
-        const tmpPath = `${imgPath}.branding.tmp.png`;
-        await sharp(washed).composite(composites).toFile(tmpPath);
-        fs.renameSync(tmpPath, imgPath);
-    } catch (e) {
-        console.warn(`  ⚠ branding failed for ${imgPath}, keeping plain screenshot: ${e.message}`);
-    }
-}
-
 function cacheBustedUrl(url) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}_cb=${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 // Builds a dedup key from BOTH the visible text and the card's first image
-// URL. Two DOM wrappers around the same underlying article will almost
-// always share the same image src even if surrounding whitespace/text
-// differs slightly, so this catches near-duplicates the old text-only hash missed.
+// URL (the URL string only — the image itself is never fetched/saved).
 async function dedupKey(el) {
     const text = (await el.textContent() || '').trim();
     const textPart = text.substring(0, 100).replace(/\s+/g, '_');
@@ -191,13 +126,13 @@ async function dedupKey(el) {
 }
 
 async function main() {
-    console.log("--- DÉBUT DE LA CAPTURE DES CARTES ---");
+    console.log("--- DÉBUT DE L'EXTRACTION DES CARTES (texte uniquement, pas de capture d'écran) ---");
     const browser = await chromium.launch({ args: ['--no-sandbox'] });
 
     let count = 0;
     const perSourceCounts = {};
     const capturedHashes = new Set();
-    const cardsMeta = []; // parallel array: cardsMeta[i] describes card_i.png
+    const cardsMeta = []; // parallel array: cardsMeta[i] describes card #i (text only)
 
     for (const source of sources) {
         const page = await browser.newPage({
@@ -273,20 +208,29 @@ async function main() {
                     }
                     capturedHashes.add(key);
 
-                    await saveTrimmedScreenshot(el, `card_${count}.png`);
-                    await brandCard(`card_${count}.png`);
-
-                    // Pull a short text summary straight from the card's own markup
-                    // (title/excerpt as published) so the live view can show a
-                    // "reading" slide right after the image, with its source.
+                    // Text only — this is the entire extraction. No screenshot,
+                    // no image of any kind is taken from the source page.
                     let summary = '';
                     try {
                         const rawText = (await el.textContent() || '').replace(/\s+/g, ' ').trim();
                         summary = rawText.length > 320 ? rawText.slice(0, 320).trim() + '…' : rawText;
                     } catch (e) { /* ignore, summary stays empty */ }
-                    cardsMeta.push({ source: source.name, sourceUrl: source.url, summary });
 
-                    console.log(`✓ Card ${count} captured (${source.name} #${i})`);
+                    if (!summary) {
+                        console.log(`  ⊘ Card ${i}: no extractable text, skipped`);
+                        continue;
+                    }
+
+                    // source/sourceUrl are kept as internal metadata only
+                    // (dedup, debugging) — index.html never displays them.
+                    cardsMeta.push({
+                        source: source.name,
+                        sourceUrl: source.url,
+                        summary,
+                        category: getCategoryFor(summary)
+                    });
+
+                    console.log(`✓ Card ${count} extracted (${source.name} #${i})`);
                     count++;
                     cardsCaptured++;
 
@@ -296,7 +240,7 @@ async function main() {
             }
 
             perSourceCounts[source.name] = cardsCaptured;
-            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards captured`);
+            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards extracted`);
 
             // one API call per source (not per card) adds real editorial
             // context to every headline instead of just displaying it as-is
@@ -317,14 +261,14 @@ async function main() {
 
     fs.writeFileSync('total.json', JSON.stringify({ count }));
     fs.writeFileSync('cards.json', JSON.stringify(cardsMeta));
-    console.log(`\n✅ Total: ${count} unique cards captured`);
+    console.log(`\n✅ Total: ${count} unique cards extracted`);
     console.log(`   Détail: ${JSON.stringify(perSourceCounts)}`);
     console.log(`--- FIN ---\n`);
 
     await browser.close();
 
     if (count === 0) {
-        console.error("❌❌❌ AUCUNE CARTE CAPTURÉE — échec du job pour alerter.");
+        console.error("❌❌❌ AUCUNE CARTE EXTRAITE — échec du job pour alerter.");
         process.exit(1);
     }
 }

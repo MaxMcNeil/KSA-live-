@@ -223,6 +223,10 @@ function offlineBatch(texts) {
 }
 
 let warnedMissingKey = false;
+// Once a 429 comes back with a multi-hour suggested wait (daily quota, not a
+// blip), remember it for the rest of THIS process run — no point spending
+// another call to rediscover the same exhausted quota a few seconds later.
+let quotaExhaustedThisRun = false;
 
 // One batched Gemini call for a whole list of headlines (not one call per
 // item) — keeps call volume tiny and comfortably inside any free-tier quota.
@@ -326,6 +330,9 @@ async function tryModel(texts, apiKey, prompt, model) {
                     console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — المهلة المقترحة طويلة جدًا ` +
                         `(${Math.round(suggested / 1000)} ثانية ≈ ${(suggested / 3600000).toFixed(1)} ساعة) — ` +
                         `تجاوز الانتظار والانتقال مباشرة إلى البديل`);
+                    if (status === 429) {
+                        quotaExhaustedThisRun = true; // don't waste further calls rediscovering this
+                    }
                     return { ok: false, status };
                 }
 
@@ -398,8 +405,19 @@ async function tryGemini(texts) {
  * @returns {Promise<string[]>} same length as texts — kept async so call
  *          sites (capture.js / fetch-news.js) don't need to change.
  */
+let warnedQuotaExhausted = false;
+
 async function getBatchAnalysis(texts) {
     if (!texts || texts.length === 0) return [];
+
+    if (quotaExhaustedThisRun) {
+        if (!warnedQuotaExhausted) {
+            console.warn('  ⚠ Gemini: الحصة اليومية منتهية (تم اكتشاف ذلك سابقًا في هذا التشغيل) — ' +
+                'تجاوز مباشرة إلى النظام المحلي لبقية الدفعات');
+            warnedQuotaExhausted = true;
+        }
+        return offlineBatch(texts);
+    }
 
     const fromGemini = await tryGemini(texts);
     if (fromGemini) return fromGemini;

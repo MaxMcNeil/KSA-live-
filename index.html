@@ -79,16 +79,20 @@
             0%, 100% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.4), inset 0 -12px 22px rgba(0,0,0,0.6); }
             50%      { box-shadow: 0 0 55px rgba(255, 40, 40, 0.85), inset 0 -12px 22px rgba(0,0,0,0.6); }
         }
-        .warroom-scan {
-            position: absolute;
+        /* "radar" scan line — sweeps the WHOLE screen (fixed to the
+           viewport), not just the war-room band, hence position:fixed here
+           rather than being a child confined to #warroom's own box. */
+        #full-scan {
+            position: fixed;
             left: 0; right: 0;
             height: 3px;
             top: -5%;
-            background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.9), transparent);
-            animation: warroomScanMove 3.2s linear infinite;
+            z-index: 8;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.85), transparent);
+            animation: fullScanMove 6s linear infinite;
             pointer-events: none;
         }
-        @keyframes warroomScanMove {
+        @keyframes fullScanMove {
             0%   { top: -5%; }
             100% { top: 105%; }
         }
@@ -142,15 +146,15 @@
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
-            font-size: clamp(1rem, 2.2vw, 1.55rem);
+            font-size: clamp(1.3rem, 5vw, 2rem);
         }
         /* the shorter the headline, the bigger it can afford to be —
            the longer it is, the smaller it shrinks so it fits in full
            instead of being clipped by the line-clamp above */
-        .warroom-headline.len-short  { font-size: clamp(1.2rem, 2.7vw, 1.8rem); }
-        .warroom-headline.len-medium { font-size: clamp(1rem, 2.2vw, 1.5rem); }
-        .warroom-headline.len-long   { font-size: clamp(0.82rem, 1.8vw, 1.2rem); }
-        .warroom-headline.len-xlong  { font-size: clamp(0.7rem, 1.5vw, 1rem); line-height: 1.25; }
+        .warroom-headline.len-short  { font-size: clamp(1.5rem, 5.5vw, 2.2rem); }
+        .warroom-headline.len-medium { font-size: clamp(1.3rem, 4.8vw, 1.9rem); }
+        .warroom-headline.len-long   { font-size: clamp(1.1rem, 4vw, 1.6rem); }
+        .warroom-headline.len-xlong  { font-size: clamp(0.95rem, 3.4vw, 1.3rem); line-height: 1.25; }
         .warroom-headline.glitch { animation: warroomGlitch 0.4s steps(2); }
         @keyframes warroomGlitch {
             0%   { transform: translate(0, 0);      text-shadow: 2px 0 #ff2b2b, -2px 0 #2bd4ff; }
@@ -160,7 +164,7 @@
             100% { transform: translate(0, 0);      text-shadow: 0 0 10px rgba(255, 60, 60, 0.7); }
         }
         .warroom-analysis {
-            font-size: clamp(0.82rem, 1.7vw, 1.08rem);
+            font-size: clamp(1rem, 3.2vw, 1.25rem);
             font-weight: 700;
             color: #ffe9b0;
             background: rgba(212, 175, 55, 0.14);
@@ -354,7 +358,7 @@
             direction: rtl;
         }
         .infocard-fact {
-            flex: 0 0 28%;
+            flex: 0 0 32%;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -378,7 +382,7 @@
         .fact-text {
             color: #ffeeee;
             font-weight: 800;
-            font-size: clamp(1rem, 2vw, 1.5rem);
+            font-size: clamp(1.3rem, 5vw, 2rem);
             line-height: 1.5;
             max-height: 100%;
             overflow: hidden;
@@ -412,7 +416,7 @@
         .analysis-text {
             color: #ffe9b0;
             font-weight: 700;
-            font-size: clamp(1.05rem, 2.1vw, 1.6rem);
+            font-size: clamp(1.3rem, 5vw, 2.1rem);
             line-height: 1.65;
             max-height: 100%;
             overflow: hidden;
@@ -477,8 +481,9 @@
     </style>
 </head>
 <body>
+    <div id="full-scan"></div>
+
     <div id="warroom">
-        <div class="warroom-scan"></div>
         <div class="warroom-inner">
             <div class="warroom-badge">
                 <span class="warroom-dot"></span>

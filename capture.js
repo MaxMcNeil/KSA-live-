@@ -104,6 +104,17 @@ async function autoDetectCards(page, sizeWindow) {
     }, sizeWindow);
 }
 
+// Card text often comes with trailing UI "chrome" scraped along with it —
+// view/share counters, relative-time stamps like "5 س" (5 hours ago) — e.g.
+// "...الإرهابية 58 س 5 3342". Strip short trailing runs of digit/single-
+// letter tokens, but only at the very end, so a real figure embedded mid
+// sentence ("مقتل 58 شخصا...") is never touched.
+function cleanExtractedText(raw) {
+    let text = (raw || '').replace(/\s+/g, ' ').trim();
+    text = text.replace(/(?:\s+[\d٠-٩]{1,6}\s*[a-zA-Zء-ي]{0,2})+$/u, '').trim();
+    return text;
+}
+
 function cacheBustedUrl(url) {
     const sep = url.includes('?') ? '&' : '?';
     return `${url}${sep}_cb=${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -194,7 +205,6 @@ async function main() {
             }
 
             let cardsCaptured = 0;
-            const sourceStartIdx = cardsMeta.length;
             for (let i = 0; i < elements.length; i++) {
                 try {
                     const el = elements[i];
@@ -212,8 +222,8 @@ async function main() {
                     // no image of any kind is taken from the source page.
                     let summary = '';
                     try {
-                        const rawText = (await el.textContent() || '').replace(/\s+/g, ' ').trim();
-                        summary = rawText.length > 320 ? rawText.slice(0, 320).trim() + '…' : rawText;
+                        const cleaned = cleanExtractedText(await el.textContent());
+                        summary = cleaned.length > 320 ? cleaned.slice(0, 320).trim() + '…' : cleaned;
                     } catch (e) { /* ignore, summary stays empty */ }
 
                     if (!summary) {
@@ -240,23 +250,22 @@ async function main() {
             }
 
             perSourceCounts[source.name] = cardsCaptured;
-            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards extracted`);
-
-            // one API call per source (not per card) adds real editorial
-            // context to every headline instead of just displaying it as-is
-            const newEntries = cardsMeta.slice(sourceStartIdx);
-            if (newEntries.length > 0) {
-                console.log(`  ✍ generating editorial analysis for ${newEntries.length} ${source.name} card(s)...`);
-                const analyses = await getBatchAnalysis(newEntries.map(e => e.summary || e.source));
-                newEntries.forEach((entry, i) => { entry.analysis = analyses[i]; });
-            }
-            console.log('');
+            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards extracted\n`);
 
         } catch (e) {
             console.error(`❌ ${source.name} error:`, e.message);
         } finally {
             await page.close();
         }
+    }
+
+    // ONE call for every card from every source (not one call per source) —
+    // cuts daily Gemini quota usage roughly 3x compared to per-source calls,
+    // which was a real contributor to the free tier running out early.
+    if (cardsMeta.length > 0) {
+        console.log(`✍ generating editorial analysis for ${cardsMeta.length} card(s) (single combined batch)...`);
+        const analyses = await getBatchAnalysis(cardsMeta.map(e => e.summary || e.source));
+        cardsMeta.forEach((entry, i) => { entry.analysis = analyses[i]; });
     }
 
     fs.writeFileSync('total.json', JSON.stringify({ count }));

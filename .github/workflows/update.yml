@@ -8,15 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      # Only needed if you ever have to swap models (see analysis.js comment)
-      # GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with: { node-version: '20' }
-      - run: npm install playwright cheerio axios rss-parser
+      - run: npm install playwright cheerio axios rss-parser jsdom @mozilla/readability
       - run: npx playwright install chromium --with-deps
       - run: rm -f *.png total.json cards.json debug_*.html debug_*.png
       - run: node capture.js

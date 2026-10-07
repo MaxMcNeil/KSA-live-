@@ -231,12 +231,26 @@ async function main() {
                         continue;
                     }
 
+                    // article link, if the card itself (or something inside
+                    // it) is/contains an <a> — lets analysis.js crawl the
+                    // full article for a real summary instead of a template
+                    let link = null;
+                    try {
+                        link = await el.evaluate((node) => {
+                            const a = node.tagName === 'A' ? node : node.querySelector('a[href]');
+                            if (!a) return null;
+                            try { return new URL(a.getAttribute('href'), document.baseURI).href; }
+                            catch (e) { return null; }
+                        });
+                    } catch (e) { /* no link available, that's fine — fallback handles it */ }
+
                     // source/sourceUrl are kept as internal metadata only
                     // (dedup, debugging) — index.html never displays them.
                     cardsMeta.push({
                         source: source.name,
                         sourceUrl: source.url,
                         summary,
+                        link,
                         category: getCategoryFor(summary)
                     });
 
@@ -259,12 +273,13 @@ async function main() {
         }
     }
 
-    // ONE call for every card from every source (not one call per source) —
-    // cuts daily Gemini quota usage roughly 3x compared to per-source calls,
-    // which was a real contributor to the free tier running out early.
+    // Crawls each card's full article (when a link was found) and locally
+    // summarizes it — no API, nothing external beyond fetching the article
+    // itself. Falls back to the rule-based generator per-item when there's
+    // no link or the crawl fails.
     if (cardsMeta.length > 0) {
-        console.log(`✍ generating editorial analysis for ${cardsMeta.length} card(s) (single combined batch)...`);
-        const analyses = await getBatchAnalysis(cardsMeta.map(e => e.summary || e.source));
+        console.log(`✍ generating analysis for ${cardsMeta.length} card(s) (full-article crawl + local summary)...`);
+        const analyses = await getBatchAnalysis(cardsMeta.map(e => ({ text: e.summary || e.source, link: e.link })));
         cardsMeta.forEach((entry, i) => { entry.analysis = analyses[i]; });
     }
 

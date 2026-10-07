@@ -1,51 +1,35 @@
 // analysis.js
-// Generates a short Arabic "analysis/context" line for each headline.
+// Generates the "analysis" text for each headline — FULLY LOCAL, NO API.
 //
-// PRIMARY: Google Gemini (free tier, Google AI Studio — no credit card).
-// Real per-article understanding instead of templated boilerplate.
+// PRIMARY MECHANISM: crawl the full article (every item already carries a
+// link) and run a local extractive summarizer (TextRank, a graph-ranking
+// algorithm — the same family as PageRank) over its real sentences. This
+// produces a genuine summary of the actual article: real sentences, really
+// picked from the real text, zero invention. No API key, no quota, no
+// external AI service, no ToS-violating scraping of consumer web tools
+// (which was considered and rejected — those aren't built for programmatic
+// use, break on any UI change, and are a worse dependency than a proper API
+// would have been, not a better one).
 //
-// FALLBACK: a fully offline, zero-dependency rule-based generator (entity +
-// category detection), used automatically whenever Gemini is unavailable —
-// no key set, quota hit, network error, or a malformed/unexpected response
-// (Google's own developer forum has recent reports, Aug–Sep 2026, of
-// intermittent 404s on Flash-model aliases, so this WILL happen sometimes).
-// The live never breaks either way — worst case, quality quietly degrades
-// to templated for that batch until Gemini is reachable again.
+// Google Gemini was used here previously and was removed entirely: across
+// several real runs it repeatedly hit dead model names (404), overloaded
+// capacity (503), and daily quota exhaustion (429) — once even with a
+// suggested retry delay of ~13.6 hours, which hung the whole GitHub Actions
+// job until it was force-cancelled. None of that can happen with a local
+// algorithm: there's nothing external to go down, rate-limit, or deprecate.
 //
-// The offline generator, stated plainly: it's rule-based (entity + category
-// detection picking from a template pool), not real analysis — generic/
-// framing-only (no invented facts) so it's always safe to show, but it's a
-// safety net, not the intended everyday experience. To make it feel sharper
-// anyway, it:
-//   - recognizes not just the 6 Gulf countries but the regional actors that
-//     actually drive most Gulf-adjacent war/security coverage (Yemen, the
-//     Houthis, Iran, Israel, Gaza, the Red Sea, the US)
-//   - builds "X vs Y" phrasing when two actors are both mentioned (common in
-//     conflict stories), instead of a flat single-entity line
-//   - scales the sentence's intensity wording to how many alarming keywords
-//     were actually found, instead of a flat tone for everything
+// FALLBACK: when an item has no link, the crawl fails (network error,
+// paywall, blocked request), or the extracted article is too short to
+// summarize meaningfully, a rule-based offline generator (entity + category
+// detection) kicks in — same safety net as before, unchanged.
 
 const axios = require('axios');
+const { JSDOM } = require('jsdom');
+const { Readability } = require('@mozilla/readability');
 
-// Confirmed across two separate real runs for THIS key: gemini-2.5-flash,
-// gemini-2.0-flash-001 and gemini-2.5-flash-lite are 404 every single time
-// (not transient — this project just has no access to them), and
-// gemini-pro-latest's free quota is too tight for this volume (429 every
-// time). Trying all five per batch was actively harmful: up to 15 requests
-// in ~15s, 9 of them guaranteed-wasted, which was very likely what tipped
-// gemini-flash-latest itself into 429 territory. Down to the one model that
-// has actually ever worked, so every retry goes toward the model that can
-// succeed instead of being burned on dead ends.
-// Override with a repo variable/secret named GEMINI_MODEL to force a name
-// (e.g. to re-test one of the dropped ones later).
-const GEMINI_MODEL_CANDIDATES = process.env.GEMINI_MODEL
-    ? [process.env.GEMINI_MODEL]
-    : ['gemini-flash-latest'];
-
-// Cached for the lifetime of this process (one capture.js or fetch-news.js
-// run) so once a working model is found, every subsequent batch in the same
-// run uses it directly instead of re-probing dead candidates each time.
-let workingModel = null;
+const HTTP_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+};
 
 const GCC_COUNTRIES = {
     'السعودية': ['السعودية', 'سعودي', 'سعودية', 'الرياض', 'جدة', 'مكة', 'المدينة المنورة', 'ولي العهد', 'آل سعود', 'بن سلمان', 'المملكة'],
@@ -222,212 +206,150 @@ function offlineBatch(texts) {
     return texts.map(t => buildAnalysis(t));
 }
 
-let warnedMissingKey = false;
-// Once a 429 comes back with a multi-hour suggested wait (daily quota, not a
-// blip), remember it for the rest of THIS process run — no point spending
-// another call to rediscover the same exhausted quota a few seconds later.
-let quotaExhaustedThisRun = false;
-
-// One batched Gemini call for a whole list of headlines (not one call per
-// item) — keeps call volume tiny and comfortably inside any free-tier quota.
-// Returns null (never throws) on any problem, so the caller can fall back.
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// 503 ("model overloaded") and 429 (rate limit) are the Gemini free tier's
-// most common failure modes, and both are usually transient — a retry
-// clears most of them instead of giving up on real analysis immediately.
-// Widened from the original 2s/5s, which real 429 responses blew straight
-// through three times in a row.
-const RETRYABLE_STATUSES = new Set([503, 429, 500, 502, 504]);
-const RETRY_DELAYS_MS = [5000, 15000];
-// Hard ceiling on any single retry wait, no matter what Gemini suggests.
-// This script runs inside a GitHub Actions job — it must never sleep for
-// hours (see the comment at the call site for what happened when it did).
-const MAX_RETRY_DELAY_MS = 20000;
-
-// On 429, Gemini's own error body usually names how long it wants us to
-// wait (error.details[].retryDelay, e.g. "19s") — honor that over our fixed
-// schedule when it's present and longer, since it's the actual quota-reset
-// hint rather than a guess.
-function suggestedRetryDelayMs(errorResponseData) {
+// ---------- full-article crawl ----------
+async function fetchArticleText(url) {
+    if (!url) return null;
     try {
-        const details = errorResponseData && errorResponseData.error && errorResponseData.error.details;
-        const retryInfo = (details || []).find(d => typeof d.retryDelay === 'string');
-        if (retryInfo) {
-            const seconds = parseFloat(retryInfo.retryDelay.replace('s', ''));
-            if (!isNaN(seconds)) return Math.round(seconds * 1000);
+        const res = await axios.get(url, {
+            headers: HTTP_HEADERS,
+            timeout: 15000,
+            maxContentLength: 5 * 1024 * 1024,
+            validateStatus: s => s >= 200 && s < 400
+        });
+        if (typeof res.data !== 'string') return null;
+
+        const dom = new JSDOM(res.data, { url });
+        const reader = new Readability(dom.window.document);
+        const article = reader.parse();
+        if (article && article.textContent && article.textContent.trim().length > 200) {
+            return article.textContent.trim();
         }
-    } catch (e) { /* fall through to the fixed schedule */ }
+    } catch (e) {
+        // network error, 404, timeout, blocked, non-article page, etc. —
+        // caller falls back to the offline generator for this item
+    }
     return null;
 }
 
-async function callGeminiOnce(texts, apiKey, prompt, model) {
-    const res = await axios.post(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-        {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.4,
-                // Google's own docs: responseMimeType alone is only a "strong
-                // hint" and can still yield stray text/malformed JSON — a
-                // responseSchema is required to actually guarantee valid JSON.
-                responseMimeType: 'application/json',
-                responseSchema: { type: 'ARRAY', items: { type: 'STRING' } },
-                // 2.5+ models "think" by default, which silently eats into
-                // maxOutputTokens and was truncating our JSON mid-string.
-                thinkingConfig: { thinkingBudget: 0 },
-                maxOutputTokens: Math.min(8000, 220 * texts.length + 500)
-            }
-        },
-        {
-            headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-            timeout: 30000
-        }
+// ---------- TextRank: local extractive summarization, zero AI/API ----------
+function splitSentences(text) {
+    return (text || '')
+        .split(/(?<=[.!؟\n])\s+/)
+        .map(s => s.replace(/\s+/g, ' ').trim())
+        .filter(s => s.length > 15 && s.length < 400);
+}
+
+function wordSetOf(sentence) {
+    return new Set(
+        normalizeArabic(sentence)
+            .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+            .split(/\s+/)
+            .filter(w => w.length > 1)
     );
-
-    const parts = res.data && res.data.candidates && res.data.candidates[0] &&
-                  res.data.candidates[0].content && res.data.candidates[0].content.parts;
-    const raw = (parts || []).map(p => p.text || '').join('').trim();
-    const cleaned = raw
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
-
-    const arr = JSON.parse(cleaned);
-    if (Array.isArray(arr) && arr.length === texts.length && arr.every(a => typeof a === 'string' && a.trim())) {
-        return arr.map(a => a.trim());
-    }
-    throw new Error('shape-mismatch'); // treated as non-retryable below
 }
 
-// Tries one model, with retries for transient errors (503/429/5xx) on that
-// model specifically. Returns { ok: true, result } / { ok: false, status }
-// so the caller can decide whether to move on to the next candidate model.
-async function tryModel(texts, apiKey, prompt, model) {
-    const attempts = RETRY_DELAYS_MS.length + 1;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-            const result = await callGeminiOnce(texts, apiKey, prompt, model);
-            return { ok: true, result };
-        } catch (e) {
-            const status = e.response ? e.response.status : null;
-            const isLast = attempt === attempts - 1;
-            const retryable = status && RETRYABLE_STATUSES.has(status);
-
-            if (retryable && !isLast) {
-                const suggested = suggestedRetryDelayMs(e.response && e.response.data);
-
-                // A real run hit this: Gemini suggested ~49035s (≈13.6h) —
-                // almost certainly a DAILY quota reset time, not a short
-                // blip. Waiting that long inside a GitHub Actions job hangs
-                // it for hours (it did — had to be force-cancelled, and
-                // nothing got committed the whole time). If the suggestion
-                // is longer than we're willing to wait, there's no point
-                // retrying at all right now — skip straight to fallback/next
-                // candidate instead of sleeping for it.
-                if (suggested !== null && suggested > MAX_RETRY_DELAY_MS) {
-                    console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — المهلة المقترحة طويلة جدًا ` +
-                        `(${Math.round(suggested / 1000)} ثانية ≈ ${(suggested / 3600000).toFixed(1)} ساعة) — ` +
-                        `تجاوز الانتظار والانتقال مباشرة إلى البديل`);
-                    if (status === 429) {
-                        quotaExhaustedThisRun = true; // don't waste further calls rediscovering this
-                    }
-                    return { ok: false, status };
-                }
-
-                const delay = Math.min(Math.max(suggested || 0, RETRY_DELAYS_MS[attempt]), MAX_RETRY_DELAY_MS);
-                console.warn(`  ⚠ Gemini (${model}) فشل (HTTP ${status}) — إعادة المحاولة خلال ${Math.round(delay / 1000)} ثوانٍ...`);
-                await sleep(delay);
-                continue;
-            }
-
-            if (e.message === 'shape-mismatch') {
-                console.warn(`  ⚠ Gemini (${model}): شكل استجابة غير متطابق`);
-            } else {
-                console.warn(`  ⚠ Gemini (${model}) فشل${status ? ` (HTTP ${status})` : ''}: ${e.message}`);
-            }
-            return { ok: false, status };
-        }
-    }
-    return { ok: false, status: null };
+function sentenceSimilarity(a, b) {
+    if (a.size === 0 || b.size === 0) return 0;
+    let overlap = 0;
+    for (const w of a) if (b.has(w)) overlap++;
+    const denom = Math.log(a.size + 1) + Math.log(b.size + 1);
+    return denom > 0 ? overlap / denom : 0;
 }
 
-async function tryGemini(texts) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        if (!warnedMissingKey) {
-            console.warn('  ⚠ GEMINI_API_KEY غير مُعرَّف — سيتم استخدام نظام القوالب المحلي بدل تحليل حقيقي. ' +
-                'أضف السر (secret) في إعدادات GitHub للحصول على تحليل فعلي لكل خبر.');
-            warnedMissingKey = true;
+function textRankSummary(fullText, maxSentences = 3) {
+    const sentences = splitSentences(fullText);
+    if (sentences.length === 0) return '';
+    if (sentences.length <= maxSentences) return sentences.join(' ');
+
+    const wordSets = sentences.map(wordSetOf);
+    const n = sentences.length;
+    const sim = Array.from({ length: n }, () => new Array(n).fill(0));
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            const s = sentenceSimilarity(wordSets[i], wordSets[j]);
+            sim[i][j] = s; sim[j][i] = s;
         }
-        return null;
     }
+    const rowSums = sim.map(row => row.reduce((a, b) => a + b, 0));
 
-    const numbered = texts.map((t, i) => `${i + 1}. ${String(t || '').slice(0, 260)}`).join('\n');
-    const prompt =
-        'أنت محرر أخبار متخصص في شؤون السعودية والخليج. لكل عنوان/مقتطف من العناصر المرقمة أدناه، ' +
-        'اكتب سطرًا إلى سطرين (تحليل أو سياق) باللغة العربية الفصحى يضيفان معلومة فعلية — ' +
-        'خلفية الحدث، سبب أهميته، أو تداعياته المحتملة — دون إعادة صياغة العنوان نفسه ودون حشو، ' +
-        'وبالاعتماد حصرًا على معلومات واردة في النص (لا تخترع أسماء أو أرقامًا أو تواريخ).\n' +
-        `أجب حصرًا بمصفوفة JSON تحتوي على ${texts.length} نصًا بنفس الترتيب، بدون أي شرح أو Markdown أو نص خارج المصفوفة.\n\n${numbered}`;
-
-    // a model already confirmed working earlier in this run — use it directly.
-    // Track it so the candidate loop below never retries the exact same
-    // model a second time in the same call (that was doubling request count
-    // — and likely retry-exhaustion time — on every transient 503/429).
-    let justTried = null;
-    if (workingModel) {
-        justTried = workingModel;
-        const r = await tryModel(texts, apiKey, prompt, workingModel);
-        if (r.ok) return r.result;
-        workingModel = null; // it stopped working mid-run — fall through and re-probe
-    }
-
-    for (const model of GEMINI_MODEL_CANDIDATES) {
-        if (model === justTried) continue; // already exhausted its retries just above
-        const r = await tryModel(texts, apiKey, prompt, model);
-        if (r.ok) {
-            workingModel = model;
-            console.log(`  ✓ Gemini: يعمل عبر النموذج "${model}"`);
-            return r.result;
+    let scores = new Array(n).fill(1 / n);
+    const damping = 0.85;
+    for (let iter = 0; iter < 30; iter++) {
+        const next = new Array(n).fill((1 - damping) / n);
+        for (let i = 0; i < n; i++) {
+            let sum = 0;
+            for (let j = 0; j < n; j++) {
+                if (i === j || rowSums[j] === 0) continue;
+                sum += (sim[j][i] / rowSums[j]) * scores[j];
+            }
+            next[i] += damping * sum;
         }
-        // 404 means this model name doesn't exist/isn't accessible — skip
-        // straight to the next candidate instead of wasting more calls on it
+        scores = next;
     }
 
-    console.warn('  ⚠ Gemini: فشلت كل النماذج المرشحة — التراجع إلى النظام المحلي لهذه الدفعة');
-    return null;
+    const top = scores
+        .map((score, idx) => ({ idx, score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxSentences)
+        .sort((a, b) => a.idx - b.idx); // restore original article order for coherence
+
+    let result = top.map(r => sentences[r.idx]).join(' ');
+    if (result.length > 420) result = result.slice(0, 420).trim() + '…';
+    return result;
+}
+
+function mapWithConcurrency(items, limit, fn) {
+    return new Promise((resolve) => {
+        const results = new Array(items.length);
+        let idx = 0;
+        let active = 0;
+        let done = 0;
+        if (items.length === 0) return resolve(results);
+
+        function next() {
+            while (active < limit && idx < items.length) {
+                const current = idx++;
+                active++;
+                Promise.resolve(fn(items[current], current))
+                    .then(r => { results[current] = r; })
+                    .catch(() => { results[current] = null; })
+                    .finally(() => {
+                        active--; done++;
+                        if (done === items.length) resolve(results);
+                        else next();
+                    });
+            }
+        }
+        next();
+    });
 }
 
 /**
- * @param {string[]} texts - headlines/excerpts (Arabic)
- * @returns {Promise<string[]>} same length as texts — kept async so call
- *          sites (capture.js / fetch-news.js) don't need to change.
+ * @param {Array<{text: string, link?: string}>} items
+ * @returns {Promise<string[]>} one analysis string per item, same order
  */
-let warnedQuotaExhausted = false;
+async function getBatchAnalysis(items) {
+    if (!items || items.length === 0) return [];
 
-async function getBatchAnalysis(texts) {
-    if (!texts || texts.length === 0) return [];
+    // tiny backward-compat shim: a plain string[] still works (no crawl,
+    // straight to the offline generator) in case anything still calls it that way
+    const normalized = items.map(it => (typeof it === 'string') ? { text: it, link: null } : it);
 
-    if (quotaExhaustedThisRun) {
-        if (!warnedQuotaExhausted) {
-            console.warn('  ⚠ Gemini: الحصة اليومية منتهية (تم اكتشاف ذلك سابقًا في هذا التشغيل) — ' +
-                'تجاوز مباشرة إلى النظام المحلي لبقية الدفعات');
-            warnedQuotaExhausted = true;
+    return mapWithConcurrency(normalized, 5, async (item) => {
+        if (item.link) {
+            const articleText = await fetchArticleText(item.link);
+            if (articleText) {
+                const summary = textRankSummary(articleText, 3);
+                if (summary && summary.length > 40) return summary;
+            }
         }
-        return offlineBatch(texts);
-    }
-
-    const fromGemini = await tryGemini(texts);
-    if (fromGemini) return fromGemini;
-
-    return offlineBatch(texts);
+        return buildAnalysis(item.text);
+    });
 }
 
 // Synchronous, no network — lets capture.js/fetch-news.js tag each item with
 // a category (war/rights/security/diplomatic/economic/social/general) for
-// the UI's category icon, reusing the same detection used for analysis text.
+// the UI's category icon, reusing the same detection used for the fallback.
 function getCategoryFor(text) {
     return detectCategory(normalizeArabic(text));
 }

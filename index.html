@@ -379,6 +379,16 @@
             border-radius: 16px;
             box-shadow: 0 0 14px rgba(255, 0, 0, 0.5);
         }
+        .fact-text, .analysis-text {
+            border-inline-end: 3px solid transparent;
+        }
+        .fact-text.typing, .analysis-text.typing {
+            animation: cursorBlink 0.9s steps(1) infinite;
+        }
+        @keyframes cursorBlink {
+            0%, 49%  { border-inline-end-color: currentColor; }
+            50%, 100% { border-inline-end-color: transparent; }
+        }
         .fact-text {
             color: #ffeeee;
             font-weight: 800;
@@ -560,7 +570,6 @@
     <div id="comment-popup"></div>
 
     <script>
-        const CARD_DURATION_MS = 14000; // how long each infocard (fact + analysis) stays on screen
         const FOLD_MS = 1000;
         const REFRESH_MS = 5 * 60 * 1000;
         const POPUP_INTERVAL_MS = 2 * 60 * 1000;
@@ -595,21 +604,79 @@
                 `<span class="live-dot"></span> مباشر — ${n} تحليل إخباري`;
         }
 
-        // Every slide is our own infocard, built entirely from text data —
-        // no image, nothing visually reproduced from any source site.
-        function setSlotContent(slotId, step) {
-            if (count <= 0) return;
+        // --- typewriter effect: fact types first, then (after a short pause)
+        // the analysis — with a soft mechanical click per character, and the
+        // card's on-screen duration computed from how long typing + reading
+        // actually takes, instead of a fixed timer.
+        const TYPE_SPEED_MS = 28;
+        const TYPE_PAUSE_BETWEEN_MS = 400;
+        const READ_PAUSE_MS = 3500;
+        const MIN_CARD_MS = 9000;
+        const MAX_CARD_MS = 28000;
+
+        let typeTimer = null;
+
+        function playTypeClick() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+                if (audioCtx.state !== 'running') return;
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'square';
+                osc.frequency.value = 2200 + Math.random() * 500; // tiny pitch jitter per key, feels more mechanical
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.045, now + 0.004);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.04);
+            } catch (e) { /* audio may be blocked — typing still proceeds silently */ }
+        }
+
+        function typeText(el, fullText, onDone) {
+            el.textContent = '';
+            el.classList.add('typing');
+            let i = 0;
+            if (typeTimer) clearInterval(typeTimer);
+            typeTimer = setInterval(() => {
+                const ch = fullText[i];
+                el.textContent += ch;
+                if (ch && !/\s/.test(ch)) playTypeClick();
+                i++;
+                if (i >= fullText.length) {
+                    clearInterval(typeTimer);
+                    typeTimer = null;
+                    el.classList.remove('typing');
+                    if (onDone) onDone();
+                }
+            }, TYPE_SPEED_MS);
+        }
+
+        // Sets a slot's content AND starts typing it out. Returns how long
+        // (ms) this card needs on screen: typing time for both fields, plus
+        // a pause between them, plus time to actually read it afterward.
+        function renderCard(slotId, cardIndex) {
             const page = document.getElementById(`page${slotId}`);
-            const cardIndex = step % count;
             const data = cardsData[cardIndex];
 
-            const factText = page.querySelector('.fact-text');
-            const analysisText = page.querySelector('.analysis-text');
+            const factEl = page.querySelector('.fact-text');
+            const analysisEl = page.querySelector('.analysis-text');
             const iconEl = page.querySelector('.category-icon');
 
-            factText.textContent = (data && data.summary) ? data.summary : 'جارٍ تحميل الخبر...';
-            analysisText.textContent = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
+            const fact = (data && data.summary) ? data.summary : 'جارٍ تحميل الخبر...';
+            const analysis = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
             iconEl.innerHTML = iconFor(data && data.category);
+
+            analysisEl.textContent = '';
+            typeText(factEl, fact, () => {
+                setTimeout(() => typeText(analysisEl, analysis), TYPE_PAUSE_BETWEEN_MS);
+            });
+
+            const totalTypeMs = fact.length * TYPE_SPEED_MS + TYPE_PAUSE_BETWEEN_MS + analysis.length * TYPE_SPEED_MS;
+            return Math.min(MAX_CARD_MS, Math.max(MIN_CARD_MS, totalTypeMs + READ_PAUSE_MS));
         }
 
         function beepType1(ctx, now) {
@@ -751,16 +818,19 @@
 
         function initStage(newCount) {
             if (cycleTimer) { clearTimeout(cycleTimer); cycleTimer = null; }
+            if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
 
             count = newCount;
             stepIndex = 0;
             frontIsA = true;
 
-            setSlotContent('A', 0);
-            setSlotContent('B', 1);
-
             const pageA = document.getElementById('pageA');
             const pageB = document.getElementById('pageB');
+            // slot B starts blank — it's hidden behind slot A, and will get
+            // typed live the moment it's actually about to be shown
+            pageB.querySelector('.fact-text').textContent = '';
+            pageB.querySelector('.analysis-text').textContent = '';
+
             [pageA, pageB].forEach(p => {
                 p.classList.add('notransition');
                 p.classList.remove('folding');
@@ -773,12 +843,9 @@
 
             setStatusLive(count);
             updateTicker();
-            scheduleNextTurn();
-        }
 
-        function scheduleNextTurn() {
-            if (count <= 0) return;
-            cycleTimer = setTimeout(turnPage, CARD_DURATION_MS);
+            const duration = renderCard('A', 0);
+            cycleTimer = setTimeout(turnPage, duration);
         }
 
         function turnPage() {
@@ -789,6 +856,12 @@
             const frontPage = document.getElementById(`page${frontId}`);
             const frontSlot = document.getElementById(`slot${frontId}`);
             const backSlot  = document.getElementById(`slot${backId}`);
+
+            stepIndex++;
+            // start typing the incoming card right away — it's revealed
+            // underneath as the outgoing page fades out over the next
+            // ~1s fold, so by the time it's visible it's already mid-type
+            const duration = renderCard(backId, stepIndex % count);
 
             frontPage.classList.add('folding');
             playRandomBeep();
@@ -802,11 +875,8 @@
                 frontSlot.style.zIndex = 2;
                 backSlot.style.zIndex = 3;
 
-                stepIndex++;
-                setSlotContent(frontId, stepIndex + 1);
-
                 frontIsA = !frontIsA;
-                scheduleNextTurn();
+                cycleTimer = setTimeout(turnPage, duration);
             }, FOLD_MS);
         }
 

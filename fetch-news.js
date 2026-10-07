@@ -30,6 +30,11 @@ const RSS_FEEDS = [
     { url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9', name: 'الجزيرة نت', lang: 'ar' },
     { url: 'https://www.alquds.co.uk/feed/', name: 'القدس العربي', lang: 'ar' },
     { url: 'https://www.aljazeera.com/xml/rss/all.xml', name: 'Al Jazeera', lang: 'en' },
+    { url: 'https://feeds.bbci.co.uk/arabic/rss.xml', name: 'BBC Arabic', lang: 'ar' },
+    // Reported intermittently unreachable by third-party feed-health monitors
+    // as of early Oct 2026 — left in since a failed feed is already handled
+    // gracefully (logged and skipped, doesn't block the others).
+    { url: 'https://www.skynewsarabia.com/web/rss', name: 'Sky News Arabia', lang: 'ar' },
 ];
 
 // Middle East Eye has no working RSS feed anymore, so its per-country listing
@@ -240,8 +245,8 @@ async function main() {
     if (finalItems.length > 0) {
         finalItems.forEach(it => { it.category = getCategoryFor(it.title); });
 
-        console.log(`✍ generating editorial analysis for ${finalItems.length} war-room item(s)...`);
-        const analyses = await getBatchAnalysis(finalItems.map(it => it.title));
+        console.log(`✍ generating analysis for ${finalItems.length} war-room item(s) (full-article crawl + local summary)...`);
+        const analyses = await getBatchAnalysis(finalItems.map(it => ({ text: it.title, link: it.link })));
         finalItems.forEach((it, i) => { it.analysis = analyses[i]; });
 
         fs.writeFileSync('news.json', JSON.stringify(finalItems));

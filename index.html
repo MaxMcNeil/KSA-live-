@@ -358,7 +358,8 @@
             direction: rtl;
         }
         .infocard-fact {
-            flex: 0 0 32%;
+            flex: 0 1 auto;
+            max-height: 40%;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -392,16 +393,21 @@
         .fact-text {
             color: #ffeeee;
             font-weight: 800;
-            font-size: clamp(1.3rem, 5vw, 2rem);
             line-height: 1.5;
             max-height: 100%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 3;
+            -webkit-line-clamp: 4;
             -webkit-box-orient: vertical;
+            font-size: clamp(1.3rem, 5vw, 2rem); /* short default, overridden by .len-* below */
         }
+        .fact-text.len-short  { font-size: clamp(1.3rem, 5vw, 2rem); }
+        .fact-text.len-medium { font-size: clamp(1.1rem, 4.2vw, 1.7rem); }
+        .fact-text.len-long   { font-size: clamp(0.95rem, 3.6vw, 1.4rem); }
+        .fact-text.len-xlong  { font-size: clamp(0.85rem, 3.1vw, 1.2rem); line-height: 1.35; }
+
         .infocard-analysis {
-            flex: 1 1 72%;
+            flex: 1 1 auto;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -426,14 +432,18 @@
         .analysis-text {
             color: #ffe9b0;
             font-weight: 700;
-            font-size: clamp(1.3rem, 5vw, 2.1rem);
-            line-height: 1.65;
+            line-height: 1.6;
             max-height: 100%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 6;
+            -webkit-line-clamp: 10;
             -webkit-box-orient: vertical;
+            font-size: clamp(1.3rem, 5vw, 2.1rem); /* short default, overridden by .len-* below */
         }
+        .analysis-text.len-short  { font-size: clamp(1.3rem, 5vw, 2.1rem); }
+        .analysis-text.len-medium { font-size: clamp(1.1rem, 4.2vw, 1.75rem); }
+        .analysis-text.len-long   { font-size: clamp(0.95rem, 3.4vw, 1.4rem); }
+        .analysis-text.len-xlong  { font-size: clamp(0.82rem, 2.8vw, 1.15rem); line-height: 1.45; }
 
         #ticker-wrap {
             position: relative;
@@ -608,43 +618,71 @@
         // the analysis — with a soft mechanical click per character, and the
         // card's on-screen duration computed from how long typing + reading
         // actually takes, instead of a fixed timer.
-        const TYPE_SPEED_MS = 28;
+        const TYPE_SPEED_MS = 60; // was 28 — faster than this and rapid clicks blur into a tone ("cricket" effect) instead of discrete clacks
         const TYPE_PAUSE_BETWEEN_MS = 400;
         const READ_PAUSE_MS = 3500;
         const MIN_CARD_MS = 9000;
-        const MAX_CARD_MS = 28000;
+        const MAX_CARD_MS = 32000;
 
         let typeTimer = null;
 
+        // A real typewriter key-strike is a short noise transient (the
+        // mechanical "clack") plus a brief low thump (the body resonance) —
+        // not a pure tone. This mix reads as an actual typewriter rather
+        // than a synthesized beep.
         function playTypeClick() {
             try {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
                 if (audioCtx.state !== 'running') return;
                 const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'square';
-                osc.frequency.value = 2200 + Math.random() * 500; // tiny pitch jitter per key, feels more mechanical
-                gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.exponentialRampToValueAtTime(0.045, now + 0.004);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start(now);
-                osc.stop(now + 0.04);
+
+                // noise burst -> bandpass filter = the percussive "clack"
+                const bufferSize = Math.round(audioCtx.sampleRate * 0.02);
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseFilter = audioCtx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.value = 2800 + Math.random() * 900;
+                noiseFilter.Q.value = 1.1;
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.11, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
+                noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination);
+                noise.start(now);
+                noise.stop(now + 0.03);
+
+                // low thump = the mechanical body/lever sound underneath the clack
+                const thump = audioCtx.createOscillator();
+                const thumpGain = audioCtx.createGain();
+                thump.type = 'triangle';
+                thump.frequency.value = 160 + Math.random() * 40;
+                thumpGain.gain.setValueAtTime(0.06, now);
+                thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+                thump.connect(thumpGain).connect(audioCtx.destination);
+                thump.start(now);
+                thump.stop(now + 0.04);
             } catch (e) { /* audio may be blocked — typing still proceeds silently */ }
         }
 
         function typeText(el, fullText, onDone) {
             el.textContent = '';
+            if (!fullText) { // guard: an empty string would otherwise literally type "undefined"
+                if (onDone) onDone();
+                return;
+            }
             el.classList.add('typing');
             let i = 0;
             if (typeTimer) clearInterval(typeTimer);
             typeTimer = setInterval(() => {
                 const ch = fullText[i];
                 el.textContent += ch;
-                if (ch && !/\s/.test(ch)) playTypeClick();
+                // skip ~30% of clicks — real typing isn't perfectly periodic,
+                // and it keeps rapid runs of letters from blurring into a buzz
+                if (ch && !/\s/.test(ch) && Math.random() > 0.3) playTypeClick();
                 i++;
                 if (i >= fullText.length) {
                     clearInterval(typeTimer);
@@ -653,6 +691,24 @@
                     if (onDone) onDone();
                 }
             }, TYPE_SPEED_MS);
+        }
+
+        // Longer fact/analysis text shrinks to fit instead of being clipped —
+        // thresholds tuned to each field's real-world length budget (facts
+        // are capped ~320 chars at capture time; TextRank analysis ~420).
+        function factSizeClassFor(text) {
+            const len = (text || '').length;
+            if (len <= 60) return 'len-short';
+            if (len <= 120) return 'len-medium';
+            if (len <= 200) return 'len-long';
+            return 'len-xlong';
+        }
+        function analysisSizeClassFor(text) {
+            const len = (text || '').length;
+            if (len <= 90) return 'len-short';
+            if (len <= 200) return 'len-medium';
+            if (len <= 320) return 'len-long';
+            return 'len-xlong';
         }
 
         // Sets a slot's content AND starts typing it out. Returns how long
@@ -669,6 +725,13 @@
             const fact = (data && data.summary) ? data.summary : 'جارٍ تحميل الخبر...';
             const analysis = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
             iconEl.innerHTML = iconFor(data && data.category);
+
+            // size computed from the FULL text, applied before typing starts —
+            // so the font never jumps/reflows mid-animation
+            factEl.classList.remove('len-short', 'len-medium', 'len-long', 'len-xlong');
+            factEl.classList.add(factSizeClassFor(fact));
+            analysisEl.classList.remove('len-short', 'len-medium', 'len-long', 'len-xlong');
+            analysisEl.classList.add(analysisSizeClassFor(analysis));
 
             analysisEl.textContent = '';
             typeText(factEl, fact, () => {

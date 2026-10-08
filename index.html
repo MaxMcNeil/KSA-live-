@@ -402,48 +402,46 @@
             font-size: clamp(1.3rem, 5vw, 2rem); /* short default, overridden by .len-* below */
         }
         .fact-text.len-short  { font-size: clamp(1.3rem, 5vw, 2rem); }
-        .fact-text.len-medium { font-size: clamp(1.1rem, 4.2vw, 1.7rem); }
-        .fact-text.len-long   { font-size: clamp(0.95rem, 3.6vw, 1.4rem); }
-        .fact-text.len-xlong  { font-size: clamp(0.85rem, 3.1vw, 1.2rem); line-height: 1.35; }
+        .fact-text.len-medium { font-size: clamp(1.2rem, 4.6vw, 1.85rem); }
+        .fact-text.len-long   { font-size: clamp(1.1rem, 4.2vw, 1.65rem); }
+        .fact-text.len-xlong  { font-size: clamp(1rem, 3.7vw, 1.45rem); line-height: 1.4; }
 
         .infocard-analysis {
             flex: 1 1 auto;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            gap: clamp(10px, 1.8vh, 20px);
-            padding: clamp(18px, 3vw, 40px);
+            gap: clamp(8px, 1.4vh, 16px);
+            padding: clamp(18px, 2.6vw, 34px) clamp(18px, 3vw, 40px);
             text-align: center;
             min-height: 0;
         }
         .analysis-header {
+            flex: 0 0 auto;
             display: inline-flex;
             align-items: center;
             gap: 10px;
             background: rgba(212, 175, 55, 0.15);
             border: 1.5px solid rgba(212, 175, 55, 0.6);
             border-radius: 20px;
-            padding: 6px 20px;
+            padding: 7px 24px;
         }
-        .category-icon { width: clamp(20px, 2.4vw, 28px); height: clamp(20px, 2.4vw, 28px); color: #d4af37; }
+        .category-icon { width: clamp(22px, 2.6vw, 30px); height: clamp(22px, 2.6vw, 30px); color: #d4af37; }
         .category-icon svg { width: 100%; height: 100%; display: block; }
-        .analysis-label-text { font-weight: 900; font-size: 1rem; color: #ffdb8a; }
+        .analysis-label-text { font-weight: 900; font-size: clamp(1.05rem, 2.6vw, 1.35rem); color: #ffdb8a; }
+        /* font-size is set in JS (renderCard -> autoFitFontSize), measured
+           against the REAL remaining space after the fact zone and this
+           header — bigger than any fixed CSS step could safely guess, and
+           automatically adapts to however much room is actually left. */
         .analysis-text {
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
             color: #ffe9b0;
             font-weight: 700;
-            line-height: 1.6;
-            max-height: 100%;
+            line-height: 1.5;
             overflow: hidden;
-            display: -webkit-box;
-            -webkit-line-clamp: 10;
-            -webkit-box-orient: vertical;
-            font-size: clamp(1.3rem, 5vw, 2.1rem); /* short default, overridden by .len-* below */
         }
-        .analysis-text.len-short  { font-size: clamp(1.3rem, 5vw, 2.1rem); }
-        .analysis-text.len-medium { font-size: clamp(1.1rem, 4.2vw, 1.75rem); }
-        .analysis-text.len-long   { font-size: clamp(0.95rem, 3.4vw, 1.4rem); }
-        .analysis-text.len-xlong  { font-size: clamp(0.82rem, 2.8vw, 1.15rem); line-height: 1.45; }
 
         #ticker-wrap {
             position: relative;
@@ -703,12 +701,31 @@
             if (len <= 200) return 'len-long';
             return 'len-xlong';
         }
-        function analysisSizeClassFor(text) {
-            const len = (text || '').length;
-            if (len <= 90) return 'len-short';
-            if (len <= 200) return 'len-medium';
-            if (len <= 320) return 'len-long';
-            return 'len-xlong';
+
+        const ANALYSIS_MIN_PX = 16;
+        const ANALYSIS_MAX_PX = 64; // generous ceiling for accessibility — real bound is whatever measurement allows
+
+        // Binary-search the LARGEST font-size where the full text's natural
+        // height (scrollHeight) still fits the element's real, laid-out
+        // height (clientHeight) — not a guess from character count, an
+        // actual measurement of the actual space. This is what lets short
+        // facts hand their freed-up room straight to the analysis text.
+        function autoFitFontSize(el, fullText, minPx, maxPx) {
+            el.style.fontSize = maxPx + 'px';
+            el.textContent = fullText;
+            let lo = minPx, hi = maxPx, best = minPx;
+            for (let i = 0; i < 10 && lo < hi; i++) {
+                const mid = Math.ceil((lo + hi) / 2);
+                el.style.fontSize = mid + 'px';
+                if (el.scrollHeight <= el.clientHeight + 1) {
+                    best = mid;
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            el.style.fontSize = best + 'px';
+            return best;
         }
 
         // Sets a slot's content AND starts typing it out. Returns how long
@@ -726,13 +743,20 @@
             const analysis = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
             iconEl.innerHTML = iconFor(data && data.category);
 
-            // size computed from the FULL text, applied before typing starts —
-            // so the font never jumps/reflows mid-animation
+            // 1) fact first — it's content-sized (flex:0 1 auto), so its
+            //    real rendered height must settle before analysis can know
+            //    how much room is actually left for it
             factEl.classList.remove('len-short', 'len-medium', 'len-long', 'len-xlong');
             factEl.classList.add(factSizeClassFor(fact));
-            analysisEl.classList.remove('len-short', 'len-medium', 'len-long', 'len-xlong');
-            analysisEl.classList.add(analysisSizeClassFor(analysis));
+            factEl.textContent = fact;
 
+            // 2) now fit the analysis text to whatever room is really left —
+            //    measured, not guessed, and as large as accessibility allows
+            autoFitFontSize(analysisEl, analysis, ANALYSIS_MIN_PX, ANALYSIS_MAX_PX);
+
+            // 3) both get cleared — the typewriter takes it from here, at
+            //    the sizes just computed, so nothing resizes mid-animation
+            factEl.textContent = '';
             analysisEl.textContent = '';
             typeText(factEl, fact, () => {
                 setTimeout(() => typeText(analysisEl, analysis), TYPE_PAUSE_BETWEEN_MS);

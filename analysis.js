@@ -207,6 +207,23 @@ function offlineBatch(texts) {
 }
 
 // ---------- full-article crawl ----------
+// A bot-challenge/CAPTCHA page (Cloudflare, etc.) still returns HTTP 200
+// with real-looking HTML — a real run hit exactly this: the war-room panel
+// once displayed "...but your activity and behavior on this site made us
+// think that you are a bot..." as if it were the article's own analysis.
+// Readability happily "extracts" that challenge page's text since it reads
+// as plausible prose, so this has to be caught explicitly before trusting it.
+const BOT_CHALLENGE_MARKERS = [
+    'you are a bot', 'verify you are human', 'checking your browser',
+    'enable javascript and cookies', 'cloudflare', 'captcha', 'access denied',
+    'rate limit', 'unusual traffic', 'automated access', 'ddos protection',
+    'يرجى تفعيل جافا سكريبت', 'تحقق من أنك لست روبوت'
+];
+function looksLikeBotChallenge(text) {
+    const t = (text || '').toLowerCase();
+    return BOT_CHALLENGE_MARKERS.some(marker => t.includes(marker));
+}
+
 async function fetchArticleText(url) {
     if (!url) return null;
     try {
@@ -217,12 +234,15 @@ async function fetchArticleText(url) {
             validateStatus: s => s >= 200 && s < 400
         });
         if (typeof res.data !== 'string') return null;
+        if (looksLikeBotChallenge(res.data)) return null; // don't even bother parsing a challenge page
 
         const dom = new JSDOM(res.data, { url });
         const reader = new Readability(dom.window.document);
         const article = reader.parse();
         if (article && article.textContent && article.textContent.trim().length > 200) {
-            return article.textContent.trim();
+            const text = article.textContent.trim();
+            if (looksLikeBotChallenge(text)) return null;
+            return text;
         }
     } catch (e) {
         // network error, 404, timeout, blocked, non-article page, etc. —
@@ -232,11 +252,41 @@ async function fetchArticleText(url) {
 }
 
 // ---------- TextRank: local extractive summarization, zero AI/API ----------
+// Names of every outlet this project scrapes/crawls directly.
+const SOURCE_NAME_BLOCKLIST = [
+    'المرصد', 'أخبار24', 'أخبار 24', 'واس', 'وكالة الأنباء السعودية',
+    'الجزيرة نت', 'القدس العربي', 'بي بي سي', 'BBC', 'سكاي نيوز', 'Sky News',
+    'ميدل إيست آي', 'Middle East Eye', 'SPA'
+];
+
+// A real run leaked "Axios" — a THIRD-PARTY outlet cited *inside* a crawled
+// article ("وبحسب موقع أكسيوس الأمريكي...": Al Jazeera citing Axios), not
+// one of our own 8 sources. A fixed name list can never be exhaustive — any
+// article can cite Reuters, CNN, Politico, etc. — so this also catches the
+// STRUCTURE of outlet attribution, and separately any Latin-script word
+// inside the (otherwise Arabic) sentence, since a foreign outlet's name is
+// almost always written in Latin letters even mid-Arabic-text ("أكسيوس" is
+// itself a transliteration, but "Axios" the way it originally appeared is
+// Latin — and other outlets are frequently left in Latin script outright).
+const ATTRIBUTION_PATTERNS = [
+    /(ذكرت|ذكر|أفادت|أفاد|كشفت|كشف|أعلنت|أعلن|وثقت|وثق|نشرت|نشر|نقلت|نقل)\s*(صحيفة|موقع|قناة|وكالة|شبكة|مجلة)/,
+    /(صحيفة|موقع|قناة|وكالة أنباء|شبكة|مجلة)\s+\S+\s*(الأمريكي|الأمريكية|البريطاني|البريطانية|الإخباري|الإخبارية)/,
+    /نقلا?ً?\s*عن\s*(صحيفة|موقع|قناة|وكالة|شبكة)/
+];
+const LATIN_WORD_RE = /[A-Za-z]{3,}/;
+
+function mentionsSource(sentence) {
+    if (SOURCE_NAME_BLOCKLIST.some(name => sentence.includes(name))) return true;
+    if (ATTRIBUTION_PATTERNS.some(re => re.test(sentence))) return true;
+    if (LATIN_WORD_RE.test(sentence)) return true; // likely a foreign brand/outlet name
+    return false;
+}
+
 function splitSentences(text) {
     return (text || '')
         .split(/(?<=[.!؟\n])\s+/)
         .map(s => s.replace(/\s+/g, ' ').trim())
-        .filter(s => s.length > 15 && s.length < 400);
+        .filter(s => s.length > 15 && s.length < 400 && !mentionsSource(s));
 }
 
 function wordSetOf(sentence) {
@@ -298,6 +348,38 @@ function textRankSummary(fullText, maxSentences = 3) {
     return result;
 }
 
+// Video-embed pages ("بالفيديو: ...") often have almost no body text beyond
+// the caption, so textRankSummary's short-article path can return something
+// that's just the headline again — a real run showed this exact duplicate.
+// Word-overlap (Jaccard) rather than exact-match, so near-identical phrasing
+// is caught too, not just byte-for-byte repeats.
+function isNearDuplicate(a, b) {
+    const wa = wordSetOf(a), wb = wordSetOf(b);
+    if (wa.size === 0 || wb.size === 0) return false;
+    let overlap = 0;
+    for (const w of wa) if (wb.has(w)) overlap++;
+    const union = wa.size + wb.size - overlap;
+    return union > 0 && (overlap / union) > 0.6;
+}
+
+// An analysis opening with the same words as the title reads as "just
+// repeating the headline", even when the rest of it genuinely differs
+// (so the overall-overlap check above wouldn't catch it). Checked
+// separately on purpose: first N words only, not the whole sentence.
+function startsTheSame(analysis, title, wordCount = 5) {
+    const normWords = (s) => normalizeArabic(s || '')
+        .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+        .split(/\s+/)
+        .filter(Boolean);
+    const aWords = normWords(analysis).slice(0, wordCount);
+    const tWords = normWords(title).slice(0, wordCount);
+    if (aWords.length < 3 || tWords.length < 3) return false;
+    let matches = 0;
+    const len = Math.min(aWords.length, tWords.length);
+    for (let i = 0; i < len; i++) if (aWords[i] === tWords[i]) matches++;
+    return (matches / len) >= 0.6;
+}
+
 function mapWithConcurrency(items, limit, fn) {
     return new Promise((resolve) => {
         const results = new Array(items.length);
@@ -340,7 +422,11 @@ async function getBatchAnalysis(items) {
             const articleText = await fetchArticleText(item.link);
             if (articleText) {
                 const summary = textRankSummary(articleText, 3);
-                if (summary && summary.length > 40) return summary;
+                if (summary && summary.length > 40 &&
+                    !isNearDuplicate(summary, item.text) &&
+                    !startsTheSame(summary, item.text)) {
+                    return summary;
+                }
             }
         }
         return buildAnalysis(item.text);

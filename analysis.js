@@ -224,8 +224,12 @@ function looksLikeBotChallenge(text) {
     return BOT_CHALLENGE_MARKERS.some(marker => t.includes(marker));
 }
 
+// Returns { text, reason } instead of just text-or-null — "no errors in the
+// log" previously meant nothing, because every failure was swallowed
+// silently. reason lets getBatchAnalysis log an actual breakdown of WHY
+// items fell back, instead of guessing blind across several runs.
 async function fetchArticleText(url) {
-    if (!url) return null;
+    if (!url) return { text: null, reason: 'no-url' };
     try {
         const res = await axios.get(url, {
             headers: HTTP_HEADERS,
@@ -233,22 +237,23 @@ async function fetchArticleText(url) {
             maxContentLength: 5 * 1024 * 1024,
             validateStatus: s => s >= 200 && s < 400
         });
-        if (typeof res.data !== 'string') return null;
-        if (looksLikeBotChallenge(res.data)) return null; // don't even bother parsing a challenge page
+        if (typeof res.data !== 'string') return { text: null, reason: 'non-text-response' };
+        if (looksLikeBotChallenge(res.data)) return { text: null, reason: 'bot-challenge-page' };
 
         const dom = new JSDOM(res.data, { url });
         const reader = new Readability(dom.window.document);
         const article = reader.parse();
-        if (article && article.textContent && article.textContent.trim().length > 200) {
-            const text = article.textContent.trim();
-            if (looksLikeBotChallenge(text)) return null;
-            return text;
-        }
+        if (!article || !article.textContent) return { text: null, reason: 'readability-failed' };
+
+        const text = article.textContent.trim();
+        if (looksLikeBotChallenge(text)) return { text: null, reason: 'bot-challenge-text' };
+        if (text.length <= 200) return { text: null, reason: 'article-too-short' };
+        return { text, reason: 'ok' };
     } catch (e) {
-        // network error, 404, timeout, blocked, non-article page, etc. —
-        // caller falls back to the offline generator for this item
+        const status = e.response ? e.response.status : null;
+        const reason = status ? `http-${status}` : (e.code || e.message || 'network-error');
+        return { text: null, reason };
     }
-    return null;
 }
 
 // ---------- TextRank: local extractive summarization, zero AI/API ----------
@@ -417,20 +422,48 @@ async function getBatchAnalysis(items) {
     // straight to the offline generator) in case anything still calls it that way
     const normalized = items.map(it => (typeof it === 'string') ? { text: it, link: null } : it);
 
-    return mapWithConcurrency(normalized, 5, async (item) => {
-        if (item.link) {
-            const articleText = await fetchArticleText(item.link);
-            if (articleText) {
-                const summary = textRankSummary(articleText, 3);
-                if (summary && summary.length > 40 &&
-                    !isNearDuplicate(summary, item.text) &&
-                    !startsTheSame(summary, item.text)) {
-                    return summary;
-                }
-            }
+    const tally = {}; // reason -> count, for the summary line below
+    const bump = (reason) => { tally[reason] = (tally[reason] || 0) + 1; };
+
+    const results = await mapWithConcurrency(normalized, 5, async (item) => {
+        if (!item.link) {
+            bump('no-link');
+            return buildAnalysis(item.text);
         }
-        return buildAnalysis(item.text);
+
+        const { text: articleText, reason } = await fetchArticleText(item.link);
+        if (!articleText) {
+            bump(reason);
+            return buildAnalysis(item.text);
+        }
+
+        const summary = textRankSummary(articleText, 3);
+        if (!summary || summary.length <= 40) {
+            bump('summary-too-short');
+            return buildAnalysis(item.text);
+        }
+        if (isNearDuplicate(summary, item.text)) {
+            bump('near-duplicate-of-title');
+            return buildAnalysis(item.text);
+        }
+        if (startsTheSame(summary, item.text)) {
+            bump('starts-same-as-title');
+            return buildAnalysis(item.text);
+        }
+
+        bump('ok-real-summary');
+        return summary;
     });
+
+    const total = normalized.length;
+    const ok = tally['ok-real-summary'] || 0;
+    const breakdown = Object.entries(tally)
+        .sort((a, b) => b[1] - a[1])
+        .map(([reason, n]) => `${reason}=${n}`)
+        .join(', ');
+    console.log(`  📊 analysis source: ${ok}/${total} real article summaries, rest fell back (${breakdown})`);
+
+    return results;
 }
 
 // Synchronous, no network — lets capture.js/fetch-news.js tag each item with

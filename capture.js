@@ -205,6 +205,7 @@ async function main() {
             }
 
             let cardsCaptured = 0;
+            let linksFound = 0;
             for (let i = 0; i < elements.length; i++) {
                 try {
                     const el = elements[i];
@@ -237,12 +238,19 @@ async function main() {
                     let link = null;
                     try {
                         link = await el.evaluate((node) => {
-                            const a = node.tagName === 'A' ? node : node.querySelector('a[href]');
+                            // closest() covers "is an <a>" AND "is INSIDE an
+                            // <a> ancestor" (a very common card pattern:
+                            // <a href="..."><div class="card">...</div></a>,
+                            // which a descendant-only querySelector would
+                            // never find); querySelector covers the inverse
+                            // (link nested somewhere inside the card).
+                            const a = node.closest('a[href]') || node.querySelector('a[href]');
                             if (!a) return null;
                             try { return new URL(a.getAttribute('href'), document.baseURI).href; }
                             catch (e) { return null; }
                         });
                     } catch (e) { /* no link available, that's fine — fallback handles it */ }
+                    if (link) linksFound++;
 
                     // source/sourceUrl are kept as internal metadata only
                     // (dedup, debugging) — index.html never displays them.
@@ -264,7 +272,7 @@ async function main() {
             }
 
             perSourceCounts[source.name] = cardsCaptured;
-            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards extracted\n`);
+            console.log(`\n✓ ${source.name}: ${cardsCaptured} cards extracted — ${linksFound}/${cardsCaptured} with a usable article link\n`);
 
         } catch (e) {
             console.error(`❌ ${source.name} error:`, e.message);

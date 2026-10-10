@@ -287,8 +287,15 @@ async function main() {
     // no link or the crawl fails.
     if (cardsMeta.length > 0) {
         console.log(`✍ generating analysis for ${cardsMeta.length} card(s) (full-article crawl + local summary)...`);
-        const analyses = await getBatchAnalysis(cardsMeta.map(e => ({ text: e.summary || e.source, link: e.link })));
-        cardsMeta.forEach((entry, i) => { entry.analysis = analyses[i]; });
+        try {
+            const analyses = await getBatchAnalysis(cardsMeta.map(e => ({ text: e.summary || e.source, link: e.link })), browser);
+            cardsMeta.forEach((entry, i) => { entry.analysis = analyses[i]; });
+        } catch (e) {
+            // an unexpected crash here (not a normal per-item fallback —
+            // those are already handled inside getBatchAnalysis) must never
+            // cost us the whole run's worth of already-scraped cards
+            console.error(`❌ analysis step crashed unexpectedly (${e.message}) — publishing cards without analysis rather than losing this run`);
+        }
     }
 
     fs.writeFileSync('total.json', JSON.stringify({ count }));
@@ -297,7 +304,7 @@ async function main() {
     console.log(`   Détail: ${JSON.stringify(perSourceCounts)}`);
     console.log(`--- FIN ---\n`);
 
-    await browser.close();
+    await browser.close().catch(e => console.warn(`⚠ browser close failed: ${e.message}`));
 
     if (count === 0) {
         console.error("❌❌❌ AUCUNE CARTE EXTRAITE — échec du job pour alerter.");

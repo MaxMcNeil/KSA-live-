@@ -4,9 +4,6 @@
 node_modules/
 
 # Debug artifacts capture.js writes only when a source site's selectors fail
+# (fullPage screenshot + raw HTML dump, for troubleshooting a layout change)
 debug_*.html
 debug_*.png
-
-# Stray tmp files from capture.js's image-branding step, in case one is ever
-# left behind by an interrupted run
-*.branding.tmp.png

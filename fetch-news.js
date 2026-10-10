@@ -18,6 +18,7 @@ const fs = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Parser = require('rss-parser');
+const { chromium } = require('playwright');
 const { getBatchAnalysis, getCategoryFor } = require('./analysis');
 
 const parser = new Parser({ timeout: 15000 });
@@ -245,9 +246,27 @@ async function main() {
     if (finalItems.length > 0) {
         finalItems.forEach(it => { it.category = getCategoryFor(it.title); });
 
+        // a real browser (not a bare HTTP GET) for article crawling — lets
+        // JS-rendered articles actually render and looks like a real
+        // visitor rather than a bot to sites that block plain requests
+        let browser = null;
+        try {
+            browser = await chromium.launch({ args: ['--no-sandbox'] });
+        } catch (e) {
+            console.warn(`⚠ could not launch browser (${e.message}) — crawling via plain HTTP instead`);
+        }
+
         console.log(`✍ generating analysis for ${finalItems.length} war-room item(s) (full-article crawl + local summary)...`);
-        const analyses = await getBatchAnalysis(finalItems.map(it => ({ text: it.title, link: it.link })));
-        finalItems.forEach((it, i) => { it.analysis = analyses[i]; });
+        try {
+            const analyses = await getBatchAnalysis(finalItems.map(it => ({ text: it.title, link: it.link })), browser);
+            finalItems.forEach((it, i) => { it.analysis = analyses[i]; });
+        } catch (e) {
+            // same guard as capture.js: an unexpected crash here must not
+            // cost us all the already-matched Gulf/KSA items for this run
+            console.error(`❌ analysis step crashed unexpectedly (${e.message}) — publishing items without analysis rather than losing this run`);
+        } finally {
+            if (browser) await browser.close().catch(() => {});
+        }
 
         fs.writeFileSync('news.json', JSON.stringify(finalItems));
         console.log(`\n✅ news.json written with ${finalItems.length} Gulf/KSA item(s)`);

@@ -182,12 +182,26 @@ function intensityPrefixFor(category, hits) {
     return scale.find(p => hits >= p.min).label;
 }
 
+// Used when no Gulf country or regional actor was detected at all — sources
+// like AlMarsd carry general Arab-world/international news too (an Egyptian
+// court case, a US story), and the old fallback claimed "this relates to
+// Gulf developments" for those regardless, which was simply false — exactly
+// what the "sans rapport" screenshots showed.
+const NO_ENTITY_TEMPLATES = [
+    () => 'لا يحمل هذا الخبر ارتباطًا مباشرًا وواضحًا بالشأن الخليجي، ويندرج ضمن المتابعة العامة لأبرز الأحداث المتداولة حاليًا.',
+    () => 'يأتي هذا الخبر ضمن التغطية العامة للأحداث المتداولة، دون ارتباط إقليمي خليجي مباشر في مضمونه.'
+];
+
 function buildAnalysis(text) {
     const normalized = normalizeArabic(text);
     const entities = detectEntities(text, normalized);
     const category = detectCategory(normalized);
     const hits = totalKeywordHits(normalized);
     const prefix = intensityPrefixFor(category, hits);
+
+    if (entities.length === 0) {
+        return prefix + pick(NO_ENTITY_TEMPLATES, text || 'x')();
+    }
 
     // conflict between two named (non-geographic) actors gets "X vs Y" phrasing
     const pairableEntities = entities.filter(e => PAIRABLE_ENTITIES.has(e));
@@ -196,7 +210,7 @@ function buildAnalysis(text) {
         return prefix + line;
     }
 
-    const entityPhrase = entities.length > 0 ? entities.join(' و') : 'منطقة الخليج';
+    const entityPhrase = entities.join(' و');
     const pool = TEMPLATES[category] || TEMPLATES.general;
     const line = pick(pool, text || '')(entityPhrase);
     return prefix + line;
@@ -228,8 +242,48 @@ function looksLikeBotChallenge(text) {
 // log" previously meant nothing, because every failure was swallowed
 // silently. reason lets getBatchAnalysis log an actual breakdown of WHY
 // items fell back, instead of guessing blind across several runs.
-async function fetchArticleText(url) {
-    if (!url) return { text: null, reason: 'no-url' };
+// Turns raw HTML into { text, reason } via Readability — shared by both
+// crawl methods below so the extraction/validation logic lives in one place.
+function extractFromHtml(html, url) {
+    if (typeof html !== 'string') return { text: null, reason: 'non-text-response' };
+    if (looksLikeBotChallenge(html)) return { text: null, reason: 'bot-challenge-page' };
+
+    const dom = new JSDOM(html, { url });
+    const reader = new Readability(dom.window.document);
+    const article = reader.parse();
+    if (!article || !article.textContent) return { text: null, reason: 'readability-failed' };
+
+    const text = article.textContent.trim();
+    if (looksLikeBotChallenge(text)) return { text: null, reason: 'bot-challenge-text' };
+    if (text.length <= 200) return { text: null, reason: 'article-too-short' };
+    return { text, reason: 'ok' };
+}
+
+// PRIMARY: a real (headless) browser page — runs the site's JS, so
+// JS-rendered articles actually render, and it looks like a real visitor
+// rather than a bare HTTP client, which is what a plain axios GET cannot do.
+// A real run showed exactly these two failure modes with axios: a site that
+// renders its article body client-side (axios only ever sees the empty
+// shell) and a site that blocks non-browser requests outright.
+async function fetchArticleTextViaBrowser(url, context) {
+    let page = null;
+    try {
+        page = await context.newPage();
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(700); // let quick client-side rendering settle
+        const html = await page.content();
+        return extractFromHtml(html, url);
+    } catch (e) {
+        return { text: null, reason: e.message ? e.message.split('\n')[0].slice(0, 60) : 'browser-error' };
+    } finally {
+        if (page) await page.close().catch(() => {});
+    }
+}
+
+// FALLBACK: plain HTTP GET — used only when no browser context is available
+// (e.g. browser launch failed). Lighter, but can't execute JS and is more
+// easily blocked — exactly the gap the browser method above closes.
+async function fetchArticleTextViaAxios(url) {
     try {
         const res = await axios.get(url, {
             headers: HTTP_HEADERS,
@@ -237,23 +291,17 @@ async function fetchArticleText(url) {
             maxContentLength: 5 * 1024 * 1024,
             validateStatus: s => s >= 200 && s < 400
         });
-        if (typeof res.data !== 'string') return { text: null, reason: 'non-text-response' };
-        if (looksLikeBotChallenge(res.data)) return { text: null, reason: 'bot-challenge-page' };
-
-        const dom = new JSDOM(res.data, { url });
-        const reader = new Readability(dom.window.document);
-        const article = reader.parse();
-        if (!article || !article.textContent) return { text: null, reason: 'readability-failed' };
-
-        const text = article.textContent.trim();
-        if (looksLikeBotChallenge(text)) return { text: null, reason: 'bot-challenge-text' };
-        if (text.length <= 200) return { text: null, reason: 'article-too-short' };
-        return { text, reason: 'ok' };
+        return extractFromHtml(res.data, url);
     } catch (e) {
         const status = e.response ? e.response.status : null;
         const reason = status ? `http-${status}` : (e.code || e.message || 'network-error');
         return { text: null, reason };
     }
+}
+
+async function fetchArticleText(url, context) {
+    if (!url) return { text: null, reason: 'no-url' };
+    return context ? fetchArticleTextViaBrowser(url, context) : fetchArticleTextViaAxios(url);
 }
 
 // ---------- TextRank: local extractive summarization, zero AI/API ----------
@@ -413,9 +461,13 @@ function mapWithConcurrency(items, limit, fn) {
 
 /**
  * @param {Array<{text: string, link?: string}>} items
+ * @param {import('playwright').Browser} [browser] - when provided, articles
+ *        are crawled with a real browser page (executes JS, looks like a
+ *        real visitor) instead of a bare HTTP GET. Pass capture.js's own
+ *        already-open browser here — no extra launch needed.
  * @returns {Promise<string[]>} one analysis string per item, same order
  */
-async function getBatchAnalysis(items) {
+async function getBatchAnalysis(items, browser) {
     if (!items || items.length === 0) return [];
 
     // tiny backward-compat shim: a plain string[] still works (no crawl,
@@ -425,45 +477,74 @@ async function getBatchAnalysis(items) {
     const tally = {}; // reason -> count, for the summary line below
     const bump = (reason) => { tally[reason] = (tally[reason] || 0) + 1; };
 
-    const results = await mapWithConcurrency(normalized, 5, async (item) => {
-        if (!item.link) {
-            bump('no-link');
-            return buildAnalysis(item.text);
+    let context = null;
+    if (browser) {
+        try {
+            context = await browser.newContext({ userAgent: HTTP_HEADERS['User-Agent'] });
+            // we only need text — blocking the heavy stuff speeds up every
+            // page load noticeably and cuts down on timeouts. Stylesheets
+            // and scripts stay on: some sites hide content via CSS/JS until
+            // hydration, and Readability needs the final rendered DOM.
+            await context.route('**/*', (route) => {
+                const type = route.request().resourceType();
+                if (type === 'image' || type === 'media' || type === 'font') {
+                    route.abort().catch(() => {});
+                } else {
+                    route.continue().catch(() => {});
+                }
+            });
+        } catch (e) {
+            console.warn(`  ⚠ could not open browser context (${e.message}) — crawling via plain HTTP instead`);
+            context = null;
         }
+    }
+    // browser pages are heavier than bare HTTP requests — keep concurrency
+    // modest so this doesn't overload the runner
+    const concurrency = context ? 3 : 5;
 
-        const { text: articleText, reason } = await fetchArticleText(item.link);
-        if (!articleText) {
-            bump(reason);
-            return buildAnalysis(item.text);
-        }
+    try {
+        const results = await mapWithConcurrency(normalized, concurrency, async (item) => {
+            if (!item.link) {
+                bump('no-link');
+                return buildAnalysis(item.text);
+            }
 
-        const summary = textRankSummary(articleText, 3);
-        if (!summary || summary.length <= 40) {
-            bump('summary-too-short');
-            return buildAnalysis(item.text);
-        }
-        if (isNearDuplicate(summary, item.text)) {
-            bump('near-duplicate-of-title');
-            return buildAnalysis(item.text);
-        }
-        if (startsTheSame(summary, item.text)) {
-            bump('starts-same-as-title');
-            return buildAnalysis(item.text);
-        }
+            const { text: articleText, reason } = await fetchArticleText(item.link, context);
+            if (!articleText) {
+                bump(reason);
+                return buildAnalysis(item.text);
+            }
 
-        bump('ok-real-summary');
-        return summary;
-    });
+            const summary = textRankSummary(articleText, 3);
+            if (!summary || summary.length <= 40) {
+                bump('summary-too-short');
+                return buildAnalysis(item.text);
+            }
+            if (isNearDuplicate(summary, item.text)) {
+                bump('near-duplicate-of-title');
+                return buildAnalysis(item.text);
+            }
+            if (startsTheSame(summary, item.text)) {
+                bump('starts-same-as-title');
+                return buildAnalysis(item.text);
+            }
 
-    const total = normalized.length;
-    const ok = tally['ok-real-summary'] || 0;
-    const breakdown = Object.entries(tally)
-        .sort((a, b) => b[1] - a[1])
-        .map(([reason, n]) => `${reason}=${n}`)
-        .join(', ');
-    console.log(`  📊 analysis source: ${ok}/${total} real article summaries, rest fell back (${breakdown})`);
+            bump('ok-real-summary');
+            return summary;
+        });
 
-    return results;
+        const total = normalized.length;
+        const ok = tally['ok-real-summary'] || 0;
+        const breakdown = Object.entries(tally)
+            .sort((a, b) => b[1] - a[1])
+            .map(([reason, n]) => `${reason}=${n}`)
+            .join(', ');
+        console.log(`  📊 analysis source: ${ok}/${total} real article summaries (via ${context ? 'browser' : 'http'}), rest fell back (${breakdown})`);
+
+        return results;
+    } finally {
+        if (context) await context.close().catch(() => {});
+    }
 }
 
 // Synchronous, no network — lets capture.js/fetch-news.js tag each item with

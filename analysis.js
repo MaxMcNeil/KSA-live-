@@ -315,23 +315,25 @@ const SOURCE_NAME_BLOCKLIST = [
 // A real run leaked "Axios" — a THIRD-PARTY outlet cited *inside* a crawled
 // article ("وبحسب موقع أكسيوس الأمريكي...": Al Jazeera citing Axios), not
 // one of our own 8 sources. A fixed name list can never be exhaustive — any
-// article can cite Reuters, CNN, Politico, etc. — so this also catches the
-// STRUCTURE of outlet attribution, and separately any Latin-script word
-// inside the (otherwise Arabic) sentence, since a foreign outlet's name is
-// almost always written in Latin letters even mid-Arabic-text ("أكسيوس" is
-// itself a transliteration, but "Axios" the way it originally appeared is
-// Latin — and other outlets are frequently left in Latin script outright).
+// article can cite Reuters, CNN, Politico, etc. — so this catches the
+// STRUCTURE of outlet attribution instead (works whether the outlet is named
+// in Arabic transliteration or Latin script, since the pattern is the
+// surrounding Arabic phrase, not the name itself).
+//
+// A blanket "any Latin letters = reject" rule was tried here first and
+// measured on a real run: it rejected 27/95 candidate sentences (28%) for
+// containing an unrelated English word or acronym (dates, %, "GCC", etc.) —
+// real collateral damage for no measurable gain over the patterns below,
+// so it's gone. Keep this filter scoped to actual attribution structure.
 const ATTRIBUTION_PATTERNS = [
     /(ذكرت|ذكر|أفادت|أفاد|كشفت|كشف|أعلنت|أعلن|وثقت|وثق|نشرت|نشر|نقلت|نقل)\s*(صحيفة|موقع|قناة|وكالة|شبكة|مجلة)/,
     /(صحيفة|موقع|قناة|وكالة أنباء|شبكة|مجلة)\s+\S+\s*(الأمريكي|الأمريكية|البريطاني|البريطانية|الإخباري|الإخبارية)/,
     /نقلا?ً?\s*عن\s*(صحيفة|موقع|قناة|وكالة|شبكة)/
 ];
-const LATIN_WORD_RE = /[A-Za-z]{3,}/;
 
 function mentionsSource(sentence) {
     if (SOURCE_NAME_BLOCKLIST.some(name => sentence.includes(name))) return true;
     if (ATTRIBUTION_PATTERNS.some(re => re.test(sentence))) return true;
-    if (LATIN_WORD_RE.test(sentence)) return true; // likely a foreign brand/outlet name
     return false;
 }
 
@@ -480,7 +482,19 @@ async function getBatchAnalysis(items, browser) {
     let context = null;
     if (browser) {
         try {
-            context = await browser.newContext({ userAgent: HTTP_HEADERS['User-Agent'] });
+            context = await browser.newContext({
+                userAgent: HTTP_HEADERS['User-Agent'],
+                viewport: { width: 1366, height: 768 },
+                locale: 'ar-SA',
+                timezoneId: 'Asia/Riyadh'
+            });
+            // navigator.webdriver === true is the single most common
+            // headless-browser tell basic-to-intermediate anti-bot checks
+            // look for — Playwright sets it by default. Hiding it is a
+            // standard, widely-documented mitigation, not a fragile hack.
+            await context.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            });
             // we only need text — blocking the heavy stuff speeds up every
             // page load noticeably and cuts down on timeouts. Stylesheets
             // and scripts stay on: some sites hide content via CSS/JS until

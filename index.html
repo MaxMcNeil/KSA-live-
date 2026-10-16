@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap" rel="stylesheet">
+    <style>
+        /* Streaming apps (YouTube Live, etc.) often draw their own header/UI
+           over the top edge of the video. Push everything down by this much
+           so nothing important sits right at the top pixel row.
+           Increase this value if your app's header still covers content. */
+        :root {
+            --top-safe: 70px;
+        }
+
+        html {
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background: #000;
+        }
+        body {
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Cairo', sans-serif;
+            display: flex;
+            flex-direction: column;
+            padding-top: var(--top-safe);
+            box-sizing: border-box;
+        }
+
+        #bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: radial-gradient(ellipse at center, #4a0000 0%, #1a0000 55%, #000000 100%);
+        }
+
+        body::before, body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            width: 20px;
+            background: repeating-linear-gradient(
+                45deg,
+                #e40000 0px, #e40000 18px,
+                #150000 18px, #150000 36px
+            );
+            opacity: 0.95;
+            z-index: 1;
+            animation: stripesMove 1s linear infinite;
+        }
+        body::before { left: 0; }
+        body::after  { right: 0; }
+
+        @keyframes stripesMove {
+            from { background-position: 0 0; }
+            to   { background-position: 0 51px; }
+        }
+
+        /* --- "war room" breaking news / analysis panel --- */
+        #warroom {
+            position: relative;
+            z-index: 6;
+            flex: 0 0 auto;
+            height: clamp(140px, 22vh, 230px);
+            overflow: hidden;
+            background: linear-gradient(180deg, #330000 0%, #0d0000 85%);
+            border-bottom: 3px solid #ff1a1a;
+            animation: warroomPulseBorder 2.4s ease-in-out infinite;
+        }
+        @keyframes warroomPulseBorder {
+            0%, 100% { box-shadow: 0 0 30px rgba(255, 0, 0, 0.4), inset 0 -12px 22px rgba(0,0,0,0.6); }
+            50%      { box-shadow: 0 0 55px rgba(255, 40, 40, 0.85), inset 0 -12px 22px rgba(0,0,0,0.6); }
+        }
+        /* "radar" scan line — sweeps the WHOLE screen (fixed to the
+           viewport), not just the war-room band, hence position:fixed here
+           rather than being a child confined to #warroom's own box. */
+        #full-scan {
+            position: fixed;
+            left: 0; right: 0;
+            height: 3px;
+            top: -5%;
+            z-index: 8;
+            background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.85), transparent);
+            animation: fullScanMove 6s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes fullScanMove {
+            0%   { top: -5%; }
+            100% { top: 105%; }
+        }
+        .warroom-inner {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 26px;
+            text-align: center;
+            direction: rtl;
+            box-sizing: border-box;
+        }
+        .warroom-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #ff1414;
+            color: #fff;
+            font-weight: 900;
+            font-size: 0.95rem;
+            padding: 3px 18px;
+            border-radius: 14px;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 14px rgba(255, 0, 0, 0.6);
+            animation: warroomBadgeFlash 1.1s steps(1) infinite;
+        }
+        @keyframes warroomBadgeFlash {
+            0%, 49%  { opacity: 1; }
+            50%, 100% { opacity: 0.45; }
+        }
+        .warroom-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #fff;
+        }
+        .warroom-cat-icon { width: 16px; height: 16px; display: inline-flex; color: #fff; }
+        .warroom-cat-icon svg { width: 100%; height: 100%; }
+        .warroom-headline {
+            font-weight: 900;
+            line-height: 1.35;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(255, 60, 60, 0.7);
+            max-width: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            font-size: clamp(1.3rem, 5vw, 2rem);
+        }
+        /* the shorter the headline, the bigger it can afford to be —
+           the longer it is, the smaller it shrinks so it fits in full
+           instead of being clipped by the line-clamp above */
+        .warroom-headline.len-short  { font-size: clamp(1.5rem, 5.5vw, 2.2rem); }
+        .warroom-headline.len-medium { font-size: clamp(1.3rem, 4.8vw, 1.9rem); }
+        .warroom-headline.len-long   { font-size: clamp(1.1rem, 4vw, 1.6rem); }
+        .warroom-headline.len-xlong  { font-size: clamp(0.95rem, 3.4vw, 1.3rem); line-height: 1.25; }
+        .warroom-headline.glitch { animation: warroomGlitch 0.4s steps(2); }
+        @keyframes warroomGlitch {
+            0%   { transform: translate(0, 0);      text-shadow: 2px 0 #ff2b2b, -2px 0 #2bd4ff; }
+            25%  { transform: translate(-2px, 1px); text-shadow: -2px 0 #ff2b2b, 2px 0 #2bd4ff; }
+            50%  { transform: translate(2px, -1px); text-shadow: 2px 0 #2bd4ff, -2px 0 #ff2b2b; }
+            75%  { transform: translate(-1px, 0);   text-shadow: -2px 0 #2bd4ff, 2px 0 #ff2b2b; }
+            100% { transform: translate(0, 0);      text-shadow: 0 0 10px rgba(255, 60, 60, 0.7); }
+        }
+        .warroom-analysis {
+            font-size: clamp(1rem, 3.2vw, 1.25rem);
+            font-weight: 700;
+            color: #ffe9b0;
+            background: rgba(212, 175, 55, 0.14);
+            border: 1px solid rgba(212, 175, 55, 0.55);
+            border-radius: 10px;
+            padding: 4px 16px;
+            max-width: 94%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+        }
+
+        #header {
+            position: relative;
+            flex: 0 0 auto;
+            z-index: 5;
+            text-align: center;
+            padding: clamp(50px, 7vh, 120px) 16px 8px;
+            pointer-events: none;
+        }
+        #header .title {
+            font-size: 2.6rem;
+            font-weight: 900;
+            color: #ff3b3b;
+            text-shadow: 0 0 14px rgba(255,0,0,0.9), 0 0 34px rgba(255,0,0,0.55);
+            letter-spacing: 1px;
+        }
+        #header .status {
+            margin-top: 8px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #ffdede;
+            text-shadow: 0 0 8px rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .live-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #ff1414;
+        }
+
+        #worldclock {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 8px 12px 4px;
+            pointer-events: none;
+        }
+        .clock-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(20, 0, 0, 0.55);
+            border: 1px solid rgba(255, 80, 80, 0.35);
+            border-radius: 20px;
+            padding: 5px 14px;
+            box-shadow: 0 0 12px rgba(255, 0, 0, 0.15);
+        }
+        .clock-city { font-size: 0.85rem; font-weight: 700; color: #ffcccc; }
+        .clock-time { font-size: 0.95rem; font-weight: 900; color: #fff; direction: ltr; }
+
+        /* --- animated channel logo, sits in its own clipped band so it can
+             never overlap the title/subtitle above or the cards below --- */
+        #logo-band {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            height: clamp(56px, 8vh, 92px);
+            overflow: hidden;
+            pointer-events: none;
+        }
+        .logo-wrap {
+            position: absolute;
+            top: 50%;
+            left: 10%;
+            width: clamp(42px, 5.5vw, 66px);
+            height: clamp(42px, 5.5vw, 66px);
+            margin-top: clamp(-33px, -2.75vw, -21px);
+            border-radius: 50%;
+            animation: logoDrift 16s ease-in-out infinite, logoFlash 4.2s ease-in-out infinite;
+        }
+        .logo-spin {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #0a1830;
+            border: 2px solid rgba(255, 205, 90, 0.75);
+            box-shadow: 0 0 16px rgba(255, 190, 60, 0.55), 0 0 4px rgba(255, 255, 255, 0.4);
+            animation: logoSpin 7s linear infinite;
+        }
+        .logo-spin img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        @keyframes logoSpin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        @keyframes logoDrift {
+            0%   { transform: translate(0, 0);        opacity: 1; }
+            18%  { transform: translate(38px, -8px);  opacity: 1; }
+            34%  { transform: translate(70px, 5px);   opacity: 1; }
+            42%  { transform: translate(85px, 5px);   opacity: 0; }
+            50%  { transform: translate(15px, 8px);   opacity: 0; }
+            58%  { transform: translate(15px, 8px);   opacity: 1; }
+            76%  { transform: translate(-8px, -6px);  opacity: 1; }
+            100% { transform: translate(0, 0);        opacity: 1; }
+        }
+        @keyframes logoFlash {
+            0%, 100% { filter: brightness(1) drop-shadow(0 0 3px rgba(255, 215, 120, 0.35)); }
+            50%      { filter: brightness(1.7) drop-shadow(0 0 16px rgba(255, 225, 150, 0.95)); }
+        }
+
+        #stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            z-index: 2;
+            perspective: 2200px;
+        }
+
+        .card-slot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 92%;
+            height: 92%;
+            max-width: 1100px;
+            max-height: 900px;
+            transform: translate(-50%, -50%);
+        }
+
+        .page {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #0a0000;
+            transform-style: preserve-3d;
+            transform-origin: right center;
+            transform: rotateY(0deg);
+            transition: transform 1s cubic-bezier(.45,.05,.55,.95), opacity .5s ease-in .5s;
+            backface-visibility: hidden;
+        }
+        .page.notransition { transition: none !important; }
+
+        .page .sheen {
+            position: absolute;
+            inset: 0;
+            border-radius: 10px;
+            background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .page.folding .sheen { opacity: 1; animation: sheenSweep 1s ease-in-out; }
+        @keyframes sheenSweep {
+            from { transform: translateX(-100%); }
+            to   { transform: translateX(100%); }
+        }
+        .page.folding { transform: rotateY(-150deg); opacity: 0; }
+
+        /* --- infocard: entirely our own layout, nothing from any source site.
+             Top ~28% = the bare fact; bottom ~72% = our analysis, per the
+             "fact first, analysis is the main event" structure. --- */
+        .infocard {
+            position: absolute;
+            inset: 0;
+            box-sizing: border-box;
+            border-radius: 14px;
+            background: linear-gradient(160deg, #360000 0%, #170000 65%, #000000 100%);
+            border: 2px solid rgba(255, 70, 70, 0.4);
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(255, 0, 0, 0.08);
+            display: flex;
+            flex-direction: column;
+            direction: rtl;
+        }
+        .infocard-fact {
+            flex: 0 1 auto;
+            max-height: 40%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: clamp(14px, 2.2vw, 26px);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.28);
+            border-bottom: 1px solid rgba(255, 80, 80, 0.3);
+        }
+        .fact-label {
+            display: inline-block;
+            background: #ff2a2a;
+            color: #fff;
+            font-weight: 900;
+            font-size: 0.9rem;
+            padding: 4px 18px;
+            border-radius: 16px;
+            box-shadow: 0 0 14px rgba(255, 0, 0, 0.5);
+        }
+        .fact-text, .analysis-text {
+            border-inline-end: 3px solid transparent;
+        }
+        .fact-text.typing, .analysis-text.typing {
+            animation: cursorBlink 0.9s steps(1) infinite;
+        }
+        @keyframes cursorBlink {
+            0%, 49%  { border-inline-end-color: currentColor; }
+            50%, 100% { border-inline-end-color: transparent; }
+        }
+        .fact-text {
+            color: #ffeeee;
+            font-weight: 800;
+            line-height: 1.5;
+            max-height: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            font-size: clamp(1.3rem, 5vw, 2rem); /* short default, overridden by .len-* below */
+        }
+        .fact-text.len-short  { font-size: clamp(1.3rem, 5vw, 2rem); }
+        .fact-text.len-medium { font-size: clamp(1.2rem, 4.6vw, 1.85rem); }
+        .fact-text.len-long   { font-size: clamp(1.1rem, 4.2vw, 1.65rem); }
+        .fact-text.len-xlong  { font-size: clamp(1rem, 3.7vw, 1.45rem); line-height: 1.4; }
+
+        .infocard-analysis {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: clamp(8px, 1.4vh, 16px);
+            padding: clamp(18px, 2.6vw, 34px) clamp(18px, 3vw, 40px);
+            text-align: center;
+            min-height: 0;
+        }
+        .analysis-header {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(212, 175, 55, 0.15);
+            border: 1.5px solid rgba(212, 175, 55, 0.6);
+            border-radius: 20px;
+            padding: 7px 24px;
+        }
+        .category-icon { width: clamp(22px, 2.6vw, 30px); height: clamp(22px, 2.6vw, 30px); color: #d4af37; }
+        .category-icon svg { width: 100%; height: 100%; display: block; }
+        .analysis-label-text { font-weight: 900; font-size: clamp(1.05rem, 2.6vw, 1.35rem); color: #ffdb8a; }
+        /* font-size is set in JS (renderCard -> autoFitFontSize), measured
+           against the REAL remaining space after the fact zone and this
+           header — bigger than any fixed CSS step could safely guess, and
+           automatically adapts to however much room is actually left. */
+        .analysis-text {
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
+            color: #ffe9b0;
+            font-weight: 700;
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        #ticker-wrap {
+            position: relative;
+            z-index: 5;
+            flex: 0 0 auto;
+            height: 54px;
+            overflow: hidden;
+            background: linear-gradient(90deg, #1a0000, #4a0000 50%, #1a0000);
+            border-top: 2px solid rgba(255, 60, 60, 0.5);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.25);
+            display: flex;
+            align-items: center;
+        }
+        #ticker-track {
+            display: flex;
+            white-space: nowrap;
+            will-change: transform;
+            transform: translateX(-50%);
+            animation: tickerCrawl 180s linear infinite;
+        }
+        #ticker-track .ticker-copy {
+            display: inline-block;
+            padding-inline-end: 80px;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #ffe3e3;
+            direction: rtl;
+        }
+        @keyframes tickerCrawl {
+            from { transform: translateX(-50%); }
+            to   { transform: translateX(0%); }
+        }
+
+        #comment-popup {
+            position: fixed;
+            bottom: 70px;
+            left: 50%;
+            z-index: 20;
+            transform: translate(-50%, 30px);
+            opacity: 0;
+            pointer-events: none;
+            background: linear-gradient(135deg, #ff2a2a, #8f0000);
+            color: #fff;
+            font-weight: 900;
+            font-size: 1.3rem;
+            padding: 16px 34px;
+            border-radius: 30px;
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.55);
+            transition: transform .5s ease, opacity .5s ease;
+            direction: rtl;
+            text-align: center;
+            max-width: 80vw;
+        }
+        #comment-popup.show { opacity: 1; transform: translate(-50%, 0); }
+    </style>
+</head>
+<body>
+    <div id="full-scan"></div>
+
+    <div id="warroom">
+        <div class="warroom-inner">
+            <div class="warroom-badge">
+                <span class="warroom-dot"></span>
+                <span class="warroom-cat-icon" id="warroomCatIcon"></span>
+                عاجل — غرفة عمليات الخليج
+            </div>
+            <div class="warroom-headline" id="warroomHeadline">جاري تحميل آخر مستجدات السعودية والخليج…</div>
+            <div class="warroom-analysis" id="warroomAnalysis"></div>
+        </div>
+    </div>
+
+    <div id="bg"></div>
+    <div id="header">
+        <div class="title">برقيات حينية</div>
+        <div class="status" id="status">جاري التحميل...</div>
+    </div>
+
+    <div id="worldclock"></div>
+
+    <div id="logo-band">
+        <div class="logo-wrap">
+            <div class="logo-spin">
+                <img src="channel-logo.jpg" alt="Gulf Think-Tank">
+            </div>
+        </div>
+    </div>
+
+    <div id="stage">
+        <div class="card-slot" id="slotA">
+            <div class="page" id="pageA">
+                <div class="sheen"></div>
+                <div class="infocard">
+                    <div class="infocard-fact">
+                        <div class="fact-label">الخبر</div>
+                        <div class="fact-text"></div>
+                    </div>
+                    <div class="infocard-analysis">
+                        <div class="analysis-header">
+                            <span class="category-icon"></span>
+                            <span class="analysis-label-text">تحليلنا</span>
+                        </div>
+                        <div class="analysis-text"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-slot" id="slotB">
+            <div class="page" id="pageB">
+                <div class="sheen"></div>
+                <div class="infocard">
+                    <div class="infocard-fact">
+                        <div class="fact-label">الخبر</div>
+                        <div class="fact-text"></div>
+                    </div>
+                    <div class="infocard-analysis">
+                        <div class="analysis-header">
+                            <span class="category-icon"></span>
+                            <span class="analysis-label-text">تحليلنا</span>
+                        </div>
+                        <div class="analysis-text"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ticker-wrap">
+        <div id="ticker-track">
+            <span class="ticker-copy" id="tickerCopy1"></span>
+            <span class="ticker-copy" id="tickerCopy2"></span>
+        </div>
+    </div>
+
+    <div id="comment-popup"></div>
+
+    <script>
+        const FOLD_MS = 1000;
+        const REFRESH_MS = 5 * 60 * 1000;
+        const POPUP_INTERVAL_MS = 2 * 60 * 1000;
+        const NEWS_ROTATE_MS = 6000; // war-room headline rotation cadence
+
+        let count = 0;
+        let cardsData = [];
+        let stepIndex = 0;
+        let frontIsA = true;
+        let cycleTimer = null;
+        let audioCtx = null;
+        let newsItems = [];
+        let newsIdx = 0;
+
+        // Small hand-built icon set (ours, not borrowed from any library) —
+        // one simple geometric glyph per editorial category, used both on
+        // the infocards and the war-room badge.
+        const CATEGORY_ICONS = {
+            war: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="20" cy="20" r="16"/><line x1="20" y1="8" x2="20" y2="16"/><line x1="20" y1="24" x2="20" y2="32"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="24" y1="20" x2="32" y2="20"/><circle cx="20" cy="20" r="3.5" fill="currentColor"/></svg>',
+            rights: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="20" y1="6" x2="20" y2="34"/><line x1="9" y1="34" x2="31" y2="34"/><line x1="6" y1="12" x2="34" y2="12"/><circle cx="12" cy="18" r="6"/><circle cx="28" cy="18" r="6"/></svg>',
+            security: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 5 L33 10 V20 C33 28 27 34 20 36 C13 34 7 28 7 20 V10 Z"/></svg>',
+            diplomatic: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="15" cy="20" r="11"/><circle cx="25" cy="20" r="11"/></svg>',
+            economic: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="6" y1="34" x2="34" y2="34"/><rect x="10" y="22" width="6" height="12"/><rect x="17" y="14" width="6" height="20"/><rect x="24" y="8" width="6" height="26"/></svg>',
+            social: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="8" width="28" height="18" rx="5"/><path d="M14 26 L10 34 L20 26"/></svg>',
+            general: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="20" cy="20" r="15"/><line x1="20" y1="16" x2="20" y2="27"/><circle cx="20" cy="11" r="1.6" fill="currentColor" stroke="none"/></svg>'
+        };
+        function iconFor(category) { return CATEGORY_ICONS[category] || CATEGORY_ICONS.general; }
+
+        function setStatusLoading() { document.getElementById('status').textContent = 'جاري التحميل...'; }
+        function setStatusLive(n) {
+            document.getElementById('status').innerHTML =
+                `<span class="live-dot"></span> مباشر — ${n} تحليل إخباري`;
+        }
+
+        // --- typewriter effect: fact types first, then (after a short pause)
+        // the analysis — with a soft mechanical click per character, and the
+        // card's on-screen duration computed from how long typing + reading
+        // actually takes, instead of a fixed timer.
+        const TYPE_SPEED_MS = 60; // was 28 — faster than this and rapid clicks blur into a tone ("cricket" effect) instead of discrete clacks
+        const TYPE_PAUSE_BETWEEN_MS = 400;
+        const READ_PAUSE_MS = 3500;
+        const MIN_CARD_MS = 9000;
+        const MAX_CARD_MS = 32000;
+
+        let typeTimer = null;
+
+        // A real typewriter key-strike is a short noise transient (the
+        // mechanical "clack") plus a brief low thump (the body resonance) —
+        // not a pure tone. This mix reads as an actual typewriter rather
+        // than a synthesized beep.
+        function playTypeClick() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+                if (audioCtx.state !== 'running') return;
+                const now = audioCtx.currentTime;
+
+                // noise burst -> bandpass filter = the percussive "clack"
+                const bufferSize = Math.round(audioCtx.sampleRate * 0.02);
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const noiseFilter = audioCtx.createBiquadFilter();
+                noiseFilter.type = 'bandpass';
+                noiseFilter.frequency.value = 2800 + Math.random() * 900;
+                noiseFilter.Q.value = 1.1;
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(0.11, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
+                noise.connect(noiseFilter).connect(noiseGain).connect(audioCtx.destination);
+                noise.start(now);
+                noise.stop(now + 0.03);
+
+                // low thump = the mechanical body/lever sound underneath the clack
+                const thump = audioCtx.createOscillator();
+                const thumpGain = audioCtx.createGain();
+                thump.type = 'triangle';
+                thump.frequency.value = 160 + Math.random() * 40;
+                thumpGain.gain.setValueAtTime(0.06, now);
+                thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+                thump.connect(thumpGain).connect(audioCtx.destination);
+                thump.start(now);
+                thump.stop(now + 0.04);
+            } catch (e) { /* audio may be blocked — typing still proceeds silently */ }
+        }
+
+        function typeText(el, fullText, onDone) {
+            el.textContent = '';
+            if (!fullText) { // guard: an empty string would otherwise literally type "undefined"
+                if (onDone) onDone();
+                return;
+            }
+            el.classList.add('typing');
+            let i = 0;
+            if (typeTimer) clearInterval(typeTimer);
+            typeTimer = setInterval(() => {
+                const ch = fullText[i];
+                el.textContent += ch;
+                // skip ~30% of clicks — real typing isn't perfectly periodic,
+                // and it keeps rapid runs of letters from blurring into a buzz
+                if (ch && !/\s/.test(ch) && Math.random() > 0.3) playTypeClick();
+                i++;
+                if (i >= fullText.length) {
+                    clearInterval(typeTimer);
+                    typeTimer = null;
+                    el.classList.remove('typing');
+                    if (onDone) onDone();
+                }
+            }, TYPE_SPEED_MS);
+        }
+
+        // Longer fact/analysis text shrinks to fit instead of being clipped —
+        // thresholds tuned to each field's real-world length budget (facts
+        // are capped ~320 chars at capture time; TextRank analysis ~420).
+        function factSizeClassFor(text) {
+            const len = (text || '').length;
+            if (len <= 60) return 'len-short';
+            if (len <= 120) return 'len-medium';
+            if (len <= 200) return 'len-long';
+            return 'len-xlong';
+        }
+
+        const ANALYSIS_MIN_PX = 16;
+        const ANALYSIS_MAX_PX = 64; // generous ceiling for accessibility — real bound is whatever measurement allows
+
+        // Binary-search the LARGEST font-size where the full text's natural
+        // height (scrollHeight) still fits the element's real, laid-out
+        // height (clientHeight) — not a guess from character count, an
+        // actual measurement of the actual space. This is what lets short
+        // facts hand their freed-up room straight to the analysis text.
+        function autoFitFontSize(el, fullText, minPx, maxPx) {
+            el.style.fontSize = maxPx + 'px';
+            el.textContent = fullText;
+            let lo = minPx, hi = maxPx, best = minPx;
+            for (let i = 0; i < 10 && lo < hi; i++) {
+                const mid = Math.ceil((lo + hi) / 2);
+                el.style.fontSize = mid + 'px';
+                if (el.scrollHeight <= el.clientHeight + 1) {
+                    best = mid;
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            el.style.fontSize = best + 'px';
+            return best;
+        }
+
+        // Sets a slot's content AND starts typing it out. Returns how long
+        // (ms) this card needs on screen: typing time for both fields, plus
+        // a pause between them, plus time to actually read it afterward.
+        function renderCard(slotId, cardIndex) {
+            const page = document.getElementById(`page${slotId}`);
+            const data = cardsData[cardIndex];
+
+            const factEl = page.querySelector('.fact-text');
+            const analysisEl = page.querySelector('.analysis-text');
+            const iconEl = page.querySelector('.category-icon');
+
+            const fact = (data && data.summary) ? data.summary : 'جارٍ تحميل الخبر...';
+            const analysis = (data && data.analysis) ? data.analysis : 'لا يتوفر تحليل لهذا الخبر حالياً.';
+            iconEl.innerHTML = iconFor(data && data.category);
+
+            // 1) fact first — it's content-sized (flex:0 1 auto), so its
+            //    real rendered height must settle before analysis can know
+            //    how much room is actually left for it
+            factEl.classList.remove('len-short', 'len-medium', 'len-long', 'len-xlong');
+            factEl.classList.add(factSizeClassFor(fact));
+            factEl.textContent = fact;
+
+            // 2) now fit the analysis text to whatever room is really left —
+            //    measured, not guessed, and as large as accessibility allows
+            autoFitFontSize(analysisEl, analysis, ANALYSIS_MIN_PX, ANALYSIS_MAX_PX);
+
+            // 3) both get cleared — the typewriter takes it from here, at
+            //    the sizes just computed, so nothing resizes mid-animation
+            factEl.textContent = '';
+            analysisEl.textContent = '';
+            typeText(factEl, fact, () => {
+                setTimeout(() => typeText(analysisEl, analysis), TYPE_PAUSE_BETWEEN_MS);
+            });
+
+            const totalTypeMs = fact.length * TYPE_SPEED_MS + TYPE_PAUSE_BETWEEN_MS + analysis.length * TYPE_SPEED_MS;
+            return Math.min(MAX_CARD_MS, Math.max(MIN_CARD_MS, totalTypeMs + READ_PAUSE_MS));
+        }
+
+        function beepType1(ctx, now) {
+            [{ freq: 880, start: 0, dur: 0.12 }, { freq: 1180, start: 0.10, dur: 0.14 }].forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = n.freq;
+                gain.gain.setValueAtTime(0.0001, now + n.start);
+                gain.gain.exponentialRampToValueAtTime(0.09, now + n.start + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.start);
+                osc.stop(now + n.start + n.dur + 0.02);
+            });
+        }
+        function beepType2(ctx, now) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = 660;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        }
+        function beepType3(ctx, now) {
+            [{ freq: 520, start: 0, dur: 0.1 }, { freq: 520, start: 0.14, dur: 0.1 }].forEach(n => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = n.freq;
+                gain.gain.setValueAtTime(0.0001, now + n.start);
+                gain.gain.exponentialRampToValueAtTime(0.07, now + n.start + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + n.start + n.dur);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + n.start);
+                osc.stop(now + n.start + n.dur + 0.02);
+            });
+        }
+        const beepTypes = [beepType1, beepType2, beepType3];
+
+        function playRandomBeep() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+                if (audioCtx.state !== 'running') {
+                    console.warn('Audio still blocked (state=' + audioCtx.state + ') — see OBS audio checklist.');
+                    return;
+                }
+                const now = audioCtx.currentTime;
+                const fn = beepTypes[Math.floor(Math.random() * beepTypes.length)];
+                fn(audioCtx, now);
+            } catch (e) {
+                console.warn('Beep failed (audio may be blocked):', e.message);
+            }
+        }
+
+        function tryUnlockAudio() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+            } catch (e) { /* ignore */ }
+        }
+        ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evt =>
+            document.addEventListener(evt, tryUnlockAudio, { passive: true })
+        );
+        document.addEventListener('visibilitychange', tryUnlockAudio);
+
+        const WORLD_CLOCK_CITIES = [
+            { label: 'الرياض',   tz: 'Asia/Riyadh' },
+            { label: 'القاهرة',  tz: 'Africa/Cairo' },
+            { label: 'دبي',      tz: 'Asia/Dubai' },
+            { label: 'لندن',     tz: 'Europe/London' },
+            { label: 'نيويورك',  tz: 'America/New_York' },
+            { label: 'طوكيو',    tz: 'Asia/Tokyo' }
+        ];
+        function renderWorldClock() {
+            const el = document.getElementById('worldclock');
+            const now = new Date();
+            el.innerHTML = WORLD_CLOCK_CITIES.map(c => {
+                const time = new Intl.DateTimeFormat('ar-SA', {
+                    timeZone: c.tz, hour: '2-digit', minute: '2-digit', hour12: false
+                }).format(now);
+                return `<span class="clock-chip"><span class="clock-city">${c.label}</span><span class="clock-time">${time}</span></span>`;
+            }).join('');
+        }
+
+        // Ticker content: headlines/analysis only — no source names, ever.
+        function updateTicker() {
+            const items = [];
+            cardsData.slice(0, 30).forEach(d => {
+                if (d && d.summary) {
+                    const short = d.summary.length > 110 ? d.summary.slice(0, 110).trim() + '…' : d.summary;
+                    items.push(short);
+                }
+            });
+            if (items.length === 0) items.push('برقيات حينية — تحليلنا لآخر الأخبار أولاً بأول');
+
+            const text = items.join('   •   ') + '   •   ';
+            document.getElementById('tickerCopy1').textContent = text;
+            document.getElementById('tickerCopy2').textContent = text;
+
+            const track = document.getElementById('ticker-track');
+            const seconds = Math.max(90, Math.round(text.length * 0.45));
+            track.style.animationDuration = seconds + 's';
+        }
+
+        const COMMENT_MESSAGES = [
+            'هل توافقون على هذا التحليل؟ شاركونا رأيكم 💬',
+            'ما تقييمكم لتحليلنا لهذا الموقف؟',
+            'لا تنسوا الإعجاب ومشاركة البث مع أصدقائكم',
+            'هل تتفاعلون معنا؟ التعليقات مفتوحة الآن',
+            'أخبرونا من أين تتابعوننا اليوم؟',
+            'شاركنا وجهة نظرك حول هذا التحليل',
+            'انضموا إلى النقاش في التعليقات 👇',
+            'ما هو التحليل الذي لفت انتباهكم أكثر؟',
+            'تفاعلكم يهمنا، اكتبوا تعليقاتكم الآن',
+            'كونوا جزءًا من الحديث، شاركونا آراءكم'
+        ];
+        let lastCommentMsg = null;
+        function showCommentPopup() {
+            let msg;
+            do {
+                msg = COMMENT_MESSAGES[Math.floor(Math.random() * COMMENT_MESSAGES.length)];
+            } while (msg === lastCommentMsg && COMMENT_MESSAGES.length > 1);
+            lastCommentMsg = msg;
+
+            const popup = document.getElementById('comment-popup');
+            popup.textContent = msg;
+            popup.classList.add('show');
+            setTimeout(() => popup.classList.remove('show'), 7000);
+        }
+
+        function initStage(newCount) {
+            if (cycleTimer) { clearTimeout(cycleTimer); cycleTimer = null; }
+            if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+
+            count = newCount;
+            stepIndex = 0;
+            frontIsA = true;
+
+            const pageA = document.getElementById('pageA');
+            const pageB = document.getElementById('pageB');
+            // slot B starts blank — it's hidden behind slot A, and will get
+            // typed live the moment it's actually about to be shown
+            pageB.querySelector('.fact-text').textContent = '';
+            pageB.querySelector('.analysis-text').textContent = '';
+
+            [pageA, pageB].forEach(p => {
+                p.classList.add('notransition');
+                p.classList.remove('folding');
+            });
+            void pageA.offsetWidth;
+            [pageA, pageB].forEach(p => p.classList.remove('notransition'));
+
+            document.getElementById('slotA').style.zIndex = 3;
+            document.getElementById('slotB').style.zIndex = 2;
+
+            setStatusLive(count);
+            updateTicker();
+
+            const duration = renderCard('A', 0);
+            cycleTimer = setTimeout(turnPage, duration);
+        }
+
+        function turnPage() {
+            if (count <= 0) return;
+
+            const frontId = frontIsA ? 'A' : 'B';
+            const backId  = frontIsA ? 'B' : 'A';
+            const frontPage = document.getElementById(`page${frontId}`);
+            const frontSlot = document.getElementById(`slot${frontId}`);
+            const backSlot  = document.getElementById(`slot${backId}`);
+
+            stepIndex++;
+            // start typing the incoming card right away — it's revealed
+            // underneath as the outgoing page fades out over the next
+            // ~1s fold, so by the time it's visible it's already mid-type
+            const duration = renderCard(backId, stepIndex % count);
+
+            frontPage.classList.add('folding');
+            playRandomBeep();
+
+            setTimeout(() => {
+                frontPage.classList.add('notransition');
+                frontPage.classList.remove('folding');
+                void frontPage.offsetWidth;
+                frontPage.classList.remove('notransition');
+
+                frontSlot.style.zIndex = 2;
+                backSlot.style.zIndex = 3;
+
+                frontIsA = !frontIsA;
+                cycleTimer = setTimeout(turnPage, duration);
+            }, FOLD_MS);
+        }
+
+        async function checkForUpdates() {
+            try {
+                const res = await fetch('total.json?t=' + Date.now());
+                const data = await res.json();
+
+                let newCards = [];
+                try {
+                    const cardsRes = await fetch('cards.json?t=' + Date.now());
+                    if (cardsRes.ok) newCards = await cardsRes.json();
+                } catch (e) { /* cards.json may not exist yet on older deployments */ }
+
+                const countChanged = data.count && data.count !== count;
+                cardsData = Array.isArray(newCards) ? newCards : [];
+
+                if (countChanged) {
+                    console.log(`Nouveau contenu détecté (${data.count} cartes), rechargement du diaporama...`);
+                    initStage(data.count);
+                } else {
+                    updateTicker();
+                }
+            } catch (e) {
+                console.error("En attente des données...", e);
+            }
+        }
+
+        async function refreshNews() {
+            try {
+                const res = await fetch('news.json?t=' + Date.now());
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) newsItems = data;
+                }
+            } catch (e) {
+                // keep whatever we already had — the panel below still rotates
+            }
+        }
+
+        function sizeClassFor(text) {
+            const len = (text || '').length;
+            if (len <= 45) return 'len-short';
+            if (len <= 80) return 'len-medium';
+            if (len <= 130) return 'len-long';
+            return 'len-xlong';
+        }
+
+        function showNextNews() {
+            const headlineEl = document.getElementById('warroomHeadline');
+            const analysisEl = document.getElementById('warroomAnalysis');
+            const catIconEl = document.getElementById('warroomCatIcon');
+
+            if (!newsItems.length) {
+                const msg = 'بانتظار ورود مستجدات جديدة من السعودية والخليج…';
+                headlineEl.classList.remove('glitch', 'len-short', 'len-medium', 'len-long', 'len-xlong');
+                void headlineEl.offsetWidth;
+                headlineEl.textContent = msg;
+                headlineEl.classList.add(sizeClassFor(msg));
+                analysisEl.textContent = '';
+                analysisEl.style.display = 'none';
+                catIconEl.innerHTML = '';
+                headlineEl.classList.add('glitch');
+                return;
+            }
+            const item = newsItems[newsIdx % newsItems.length];
+            newsIdx++;
+            headlineEl.classList.remove('glitch', 'len-short', 'len-medium', 'len-long', 'len-xlong');
+            void headlineEl.offsetWidth;
+            headlineEl.textContent = item.title;
+            headlineEl.classList.add(sizeClassFor(item.title));
+            if (item.analysis) {
+                analysisEl.textContent = '🔎 ' + item.analysis;
+                analysisEl.style.display = '-webkit-box';
+            } else {
+                analysisEl.textContent = '';
+                analysisEl.style.display = 'none';
+            }
+            catIconEl.innerHTML = iconFor(item.category);
+            headlineEl.classList.add('glitch');
+        }
+
+        async function init() {
+            setStatusLoading();
+            tryUnlockAudio();
+            renderWorldClock();
+            setInterval(renderWorldClock, 1000);
+
+            setTimeout(showCommentPopup, 20000);
+            setInterval(showCommentPopup, POPUP_INTERVAL_MS);
+
+            await refreshNews();
+            showNextNews();
+            setInterval(showNextNews, NEWS_ROTATE_MS);
+            setInterval(refreshNews, REFRESH_MS);
+
+            await checkForUpdates();
+            setInterval(checkForUpdates, REFRESH_MS);
+        }
+
+        init();
+    </script>
+</body>
+</html>

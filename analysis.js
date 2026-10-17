@@ -24,7 +24,12 @@
 // detection) kicks in — same safety net as before, unchanged.
 
 const axios = require('axios');
-const { JSDOM } = require('jsdom');
+const { JSDOM, VirtualConsole } = require('jsdom');
+// jsdom's CSS engine doesn't support all modern syntax and logs a "Could not
+// parse CSS stylesheet" warning whenever it hits something it doesn't
+// recognize — harmless (we only need text extraction, not CSS rendering)
+// but it was cluttering the logs. One shared silent console for all parses.
+const silentConsole = new VirtualConsole();
 const { Readability } = require('@mozilla/readability');
 
 const HTTP_HEADERS = {
@@ -259,7 +264,7 @@ function looksLikeBotChallenge(text) {
 function extractFromHtml(html, url) {
     if (typeof html !== 'string') return { text: null, reason: 'non-text-response' };
 
-    const dom = new JSDOM(html, { url });
+    const dom = new JSDOM(html, { url, virtualConsole: silentConsole });
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
     if (!article || !article.textContent) return { text: null, reason: 'readability-failed' };

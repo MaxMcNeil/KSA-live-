@@ -424,6 +424,20 @@ function textRankSummary(fullText, maxSentences = 3) {
 // that's just the headline again — a real run showed this exact duplicate.
 // Word-overlap (Jaccard) rather than exact-match, so near-identical phrasing
 // is caught too, not just byte-for-byte repeats.
+// The crawl follows whatever language the ORIGINAL article is in — a real
+// run showed raw English text ("...Washington agreed to lift its naval
+// blockade...") leaking into the war-room analysis line, because the
+// source article (Al Jazeera English) was in English even though its TITLE
+// had already been translated to Arabic earlier in the pipeline. This is a
+// general safety net (not source-specific) so it catches any future case
+// the same way, regardless of which feed or site it comes from.
+function isPredominantlyArabic(text) {
+    const arabicChars = (text.match(/[\u0600-\u06FF]/g) || []).length;
+    const latinChars = (text.match(/[A-Za-z]/g) || []).length;
+    if (arabicChars === 0) return false;
+    return arabicChars > latinChars * 2;
+}
+
 function isNearDuplicate(a, b) {
     const wa = wordSetOf(a), wb = wordSetOf(b);
     if (wa.size === 0 || wb.size === 0) return false;
@@ -542,6 +556,10 @@ async function getBatchAnalysis(items, browser) {
             const { text: articleText, reason } = await fetchArticleText(item.link, context);
             if (!articleText) {
                 bump(reason);
+                return buildAnalysis(item.text);
+            }
+            if (!isPredominantlyArabic(articleText)) {
+                bump('non-arabic-article');
                 return buildAnalysis(item.text);
             }
 

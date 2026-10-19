@@ -69,7 +69,7 @@
             position: relative;
             z-index: 6;
             flex: 0 0 auto;
-            height: clamp(140px, 22vh, 230px);
+            max-height: 40vh; /* safety cap only — actual height now follows real content */
             overflow: hidden;
             background: linear-gradient(180deg, #330000 0%, #0d0000 85%);
             border-bottom: 3px solid #ff1a1a;
@@ -99,13 +99,12 @@
         .warroom-inner {
             position: relative;
             z-index: 2;
-            height: 100%;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 6px 26px;
+            padding: 10px 26px;
             text-align: center;
             direction: rtl;
             box-sizing: border-box;
@@ -170,11 +169,11 @@
             background: rgba(212, 175, 55, 0.14);
             border: 1px solid rgba(212, 175, 55, 0.55);
             border-radius: 10px;
-            padding: 4px 16px;
+            padding: 6px 16px;
             max-width: 94%;
             overflow: hidden;
             display: -webkit-box;
-            -webkit-line-clamp: 1;
+            -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
         }
 
@@ -183,7 +182,7 @@
             flex: 0 0 auto;
             z-index: 5;
             text-align: center;
-            padding: clamp(50px, 7vh, 120px) 16px 8px;
+            padding: clamp(10px, 1.8vh, 24px) 16px 4px;
             pointer-events: none;
         }
         #header .title {
@@ -220,8 +219,8 @@
             display: flex;
             justify-content: center;
             flex-wrap: wrap;
-            gap: 10px;
-            padding: 8px 12px 4px;
+            gap: 8px;
+            padding: 4px 12px 2px;
             pointer-events: none;
         }
         .clock-chip {
@@ -243,7 +242,7 @@
             position: relative;
             z-index: 5;
             flex: 0 0 auto;
-            height: clamp(56px, 8vh, 92px);
+            height: clamp(40px, 5.5vh, 64px);
             overflow: hidden;
             pointer-events: none;
         }
@@ -251,9 +250,9 @@
             position: absolute;
             top: 50%;
             left: 10%;
-            width: clamp(42px, 5.5vw, 66px);
-            height: clamp(42px, 5.5vw, 66px);
-            margin-top: clamp(-33px, -2.75vw, -21px);
+            width: clamp(28px, 4.2vw, 48px);
+            height: clamp(28px, 4.2vw, 48px);
+            margin-top: clamp(-24px, -2.1vw, -14px);
             border-radius: 50%;
             animation: logoDrift 16s ease-in-out infinite, logoFlash 4.2s ease-in-out infinite;
         }

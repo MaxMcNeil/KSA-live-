@@ -245,11 +245,11 @@ async function main() {
 
     for (const it of top) {
         if (it.lang === 'ar') {
-            finalItems.push({ title: it.title, source: it.source, link: it.link, negative: it.score > 0 });
+            finalItems.push({ title: it.title, source: it.source, link: it.link, lang: 'ar', negative: it.score > 0 });
         } else {
             const translated = await translateToArabic(it.title);
             if (translated) {
-                finalItems.push({ title: translated, source: it.source, link: it.link, negative: it.score > 0 });
+                finalItems.push({ title: translated, source: it.source, link: it.link, lang: 'en', negative: it.score > 0 });
             }
             await sleep(400); // be polite to the free translation endpoint
         }
@@ -270,7 +270,10 @@ async function main() {
 
         console.log(`✍ generating analysis for ${finalItems.length} war-room item(s) (full-article crawl + local summary)...`);
         try {
-            const analyses = await getBatchAnalysis(finalItems.map(it => ({ text: it.title, link: it.link })), browser);
+            const analyses = await getBatchAnalysis(
+                finalItems.map(it => ({ text: it.title, link: it.lang === 'ar' ? it.link : null })),
+                browser
+            );
             finalItems.forEach((it, i) => { it.analysis = analyses[i]; });
         } catch (e) {
             // same guard as capture.js: an unexpected crash here must not

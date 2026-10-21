@@ -1,6 +1,6 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
-const { getBatchAnalysis, getCategoryFor, isOffTopic } = require('./analysis');
+const { getBatchAnalysis, getCategoryFor, isOffTopic, isRelevant } = require('./analysis');
 
 // Capture order == display order (cards are numbered sequentially as they're
 // found), so this array order controls what plays first on the live view.
@@ -233,6 +233,10 @@ async function main() {
                     }
                     if (isOffTopic(summary)) {
                         console.log(`  ⊘ Card ${i}: sports/entertainment, off-brief, skipped`);
+                        continue;
+                    }
+                    if (!isRelevant(summary)) {
+                        console.log(`  ⊘ Card ${i}: no Gulf/regional relevance detected, skipped`);
                         continue;
                     }
 

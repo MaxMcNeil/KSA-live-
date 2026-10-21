@@ -639,4 +639,17 @@ function isOffTopic(text) {
     return OFF_TOPIC_KEYWORDS.some(k => t.includes(k.toLowerCase()));
 }
 
-module.exports = { getBatchAnalysis, getCategoryFor, isOffTopic };
+// Scope is political/geopolitical/legal/economic/security/GCC-specific news
+// only — NOT generic global viral/accident/curiosity content (a real example
+// that slipped through: "girl falls off a waterfall in Indonesia", zero
+// Gulf connection, zero political substance). Requires at least one
+// detected Gulf country or regional actor (Yemen, Houthis, Iran, Israel,
+// Gaza, Red Sea, US) — the same relevance bar fetch-news.js's RSS pipeline
+// already applies via matchesGulf(), now closing the gap for capture.js's
+// scraped cards, which never had any relevance filter at all.
+function isRelevant(text) {
+    const normalized = normalizeArabic(text);
+    return detectEntities(text, normalized).length > 0;
+}
+
+module.exports = { getBatchAnalysis, getCategoryFor, isOffTopic, isRelevant };

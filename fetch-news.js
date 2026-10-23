@@ -180,7 +180,20 @@ async function main() {
 
     for (const feed of RSS_FEEDS) {
         try {
-            const parsed = await parser.parseURL(feed.url);
+            let parsed;
+            try {
+                parsed = await parser.parseURL(feed.url);
+            } catch (parseErr) {
+                // A bare "&" that should be "&amp;" (seen on Sky News
+                // Arabia) hard-fails strict XML parsing. Retry once with the
+                // raw XML sanitized, instead of losing the whole feed over
+                // one malformed character — only on failure, so well-formed
+                // feeds (the vast majority) never pay this extra round trip.
+                const res = await axios.get(feed.url, { headers: HTTP_HEADERS, timeout: 15000 });
+                const sanitized = String(res.data).replace(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)/g, '&amp;');
+                parsed = await parser.parseString(sanitized);
+                console.log(`  ↻ ${feed.name}: recovered after sanitizing malformed XML`);
+            }
             let kept = 0;
             for (const item of (parsed.items || []).slice(0, 40)) {
                 const rawTitle = (item.title || '').trim();
